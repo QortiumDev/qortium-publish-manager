@@ -1,0 +1,30 @@
+:root {
+  font-size: 16px;
+  line-height: 1.2;
+  box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
+}
+
+:root[data-text-size='extra-small'] {
+  font-size: 16px;
+}
+
+:root[data-text-size='small'] {
+  font-size: 17.92px;
+}
+
+:root[data-text-size='medium'] {
+  font-size: 19.84px;
+}
+
+:root[data-text-size='large'] {
+  font-size: 22.08px;
+}
+
+:root[data-text-size='extra-large'] {
+  font-size: 24.96px;
+}
+
+:root[data-text-size='huge'] {
+  font-size: 27.96px;
+}
