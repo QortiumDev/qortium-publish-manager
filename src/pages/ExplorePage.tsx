@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Button, Chip, CircularProgress, InputAdornment,
   TextField, Typography,
@@ -79,10 +80,13 @@ function ResourceRow({ r, last }: { r: QdnResource; last: boolean }) {
 
 export function ExplorePage() {
   const c = useColors();
+  const [searchParams] = useSearchParams();
+  const initialName = searchParams.get('name') ?? '';
+  const didInit = useRef(false);
 
   const [serviceFilter, setServiceFilter] = useState('ALL');
-  const [queryInput, setQueryInput]       = useState('');
-  const [activeQuery, setActiveQuery]     = useState('');
+  const [queryInput, setQueryInput]       = useState(initialName);
+  const [activeQuery, setActiveQuery]     = useState(initialName);
 
   const [results, setResults]       = useState<QdnResource[]>([]);
   const [loading, setLoading]       = useState(false);
@@ -113,9 +117,11 @@ export function ExplorePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offset]);
 
-  // Initial load
+  // Initial load — use deep-link name param if present
   useEffect(() => {
-    void doSearch('ALL', '', true);
+    if (didInit.current) return;
+    didInit.current = true;
+    void doSearch('ALL', initialName, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
