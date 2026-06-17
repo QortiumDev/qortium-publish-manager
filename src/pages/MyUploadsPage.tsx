@@ -8,11 +8,12 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { useAtomValue } from 'jotai';
-import { useNavigate } from 'react-router-dom';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
 import { listResources, deleteResource } from '../api/qortal';
+import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
+import { PublishDialog } from './PublishPage';
 import type { QdnResource } from '../types';
 
 function formatDate(ts: number | undefined): string {
@@ -30,13 +31,14 @@ function formatBytes(bytes: number | undefined): string {
 export function MyUploadsPage() {
   const c = useColors();
   const account = useAtomValue(accountAtom);
-  const navigate = useNavigate();
 
   const [resources, setResources] = useState<QdnResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [serviceFilter, setServiceFilter] = useState('ALL');
   const [deleteTarget, setDeleteTarget] = useState<QdnResource | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [viewTarget, setViewTarget] = useState<QdnResource | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   const load = useCallback(async (name: string) => {
     setLoading(true);
@@ -109,6 +111,14 @@ export function MyUploadsPage() {
             <RefreshIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        <Tooltip title="Publish new">
+          <IconButton
+            onClick={() => setPublishOpen(true)}
+            sx={{ borderRadius: `${tokens.shape.radius}px`, color: c.textSecondary, '&:hover': { color: c.accent, bgcolor: c.borderLight } }}
+          >
+            <CloudUploadIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {serviceTypes.length > 1 && (
@@ -147,7 +157,7 @@ export function MyUploadsPage() {
               variant="contained"
               size="small"
               startIcon={<CloudUploadIcon />}
-              onClick={() => navigate('/publish')}
+              onClick={() => setPublishOpen(true)}
               disableElevation
               sx={{ bgcolor: c.accent, color: c.accentText, borderRadius: '50px', '&:hover': { bgcolor: c.accentHover } }}
             >
@@ -158,10 +168,12 @@ export function MyUploadsPage() {
           filtered.map((r, i) => (
             <Box
               key={`${r.service}-${r.identifier}`}
+              onClick={() => setViewTarget(r)}
               sx={{
                 px: 2.5, py: 1.75,
                 display: 'flex', alignItems: 'center', gap: 2,
                 borderBottom: i < filtered.length - 1 ? `1px solid ${c.borderLight}` : 'none',
+                cursor: 'pointer',
                 '&:hover': { bgcolor: c.borderLight },
                 transition: '0.12s ease',
               }}
@@ -203,7 +215,7 @@ export function MyUploadsPage() {
               <Tooltip title="Delete">
                 <IconButton
                   size="small"
-                  onClick={() => setDeleteTarget(r)}
+                  onClick={e => { e.stopPropagation(); setDeleteTarget(r); }}
                   sx={{
                     borderRadius: `${tokens.shape.radius}px`,
                     color: c.textSecondary,
@@ -225,6 +237,12 @@ export function MyUploadsPage() {
           {filtered.length} resource{filtered.length !== 1 ? 's' : ''}
         </Typography>
       )}
+
+      {viewTarget && (
+        <ResourceViewerDialog resource={viewTarget} onClose={() => setViewTarget(null)} />
+      )}
+
+      <PublishDialog open={publishOpen} onClose={() => setPublishOpen(false)} />
 
       <Dialog
         open={!!deleteTarget}

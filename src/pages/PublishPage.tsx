@@ -1,16 +1,18 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box, Typography, Button, TextField, MenuItem,
   CircularProgress, Chip, FormControlLabel, Checkbox,
+  Dialog, DialogTitle, DialogContent, IconButton,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import CloseIcon from '@mui/icons-material/Close';
 import { useAtomValue } from 'jotai';
-import { useNavigate } from 'react-router-dom';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
-import { publishResource } from '../api/qortal';
+import { publishResource, publishAvatar, publishAvatarFromQDN, AVATAR_GIF_MAX_BYTES } from '../api/qortal';
 import { SERVICE_TYPES } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -23,10 +25,189 @@ function parseTags(raw: string): string[] {
   return raw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
 }
 
-export function PublishPage() {
+const DEFAULT_AVATAR_NAME = '7R15M3G157U5';
+
+function NameAvatarSection({ name }: { name: string }) {
+  const c = useColors();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [cacheBust, setCacheBust] = useState(0);
+  const [currentAvatarErr, setCurrentAvatarErr] = useState(false);
+  const [defaultAvatarErr, setDefaultAvatarErr] = useState(false);
+
+  const currentAvatarUrl = `/arbitrary/THUMBNAIL/${encodeURIComponent(name)}/avatar?cb=${cacheBust}`;
+  const defaultAvatarUrl = `/arbitrary/THUMBNAIL/${DEFAULT_AVATAR_NAME}/avatar`;
+
+  const resetImageErrors = useCallback(() => {
+    setCurrentAvatarErr(false);
+    setDefaultAvatarErr(false);
+  }, []);
+
+  useEffect(() => { resetImageErrors(); }, [name, cacheBust, resetImageErrors]);
+
+  function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    if (file.type === 'image/gif' && file.size > AVATAR_GIF_MAX_BYTES) {
+      setErrorMsg('GIF too large — max ~3.5 MB.');
+      return;
+    }
+    setErrorMsg('');
+    setStatus('idle');
+    setPendingFile(file);
+    setPreview(URL.createObjectURL(file));
+  }
+
+  async function handlePublish() {
+    if (!pendingFile) return;
+    setPublishing(true);
+    setStatus('idle');
+    try {
+      await publishAvatar(name, pendingFile);
+      setStatus('success');
+      setPendingFile(null);
+      setPreview(null);
+      setCacheBust(v => v + 1);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Failed to set avatar.');
+      setStatus('error');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function handleUseDefault() {
+    setPublishing(true);
+    setStatus('idle');
+    setErrorMsg('');
+    try {
+      await publishAvatarFromQDN(name, DEFAULT_AVATAR_NAME);
+      setStatus('success');
+      setCacheBust(v => v + 1);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Failed to set avatar.');
+      setStatus('error');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  function handleDiscard() {
+    setPendingFile(null);
+    setPreview(null);
+    setStatus('idle');
+    setErrorMsg('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  return (
+    <Box sx={{ mt: 4, pt: 4, borderTop: `${tokens.shape.borderWidth} solid ${c.borderLight}` }}>
+      <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1rem', letterSpacing: '-0.01em', color: c.textPrimary, mb: 0.5 }}>
+        Name avatar
+      </Typography>
+      <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mb: 2.5 }}>
+        Set an icon for <strong style={{ color: c.textPrimary }}>{name}</strong>. Appears in Profilium and anywhere names are displayed.
+      </Typography>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <Box sx={{
+          width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
+          border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+          overflow: 'hidden', bgcolor: c.borderLight,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {preview ? (
+            <Box component="img" src={preview} alt="preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : !currentAvatarErr ? (
+            <Box component="img" src={currentAvatarUrl} alt="avatar" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setCurrentAvatarErr(true)} />
+          ) : !defaultAvatarErr ? (
+            <Box component="img" src={defaultAvatarUrl} alt="default avatar" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setDefaultAvatarErr(true)} />
+          ) : (
+            <AccountCircleIcon sx={{ fontSize: '2.5rem', color: c.textSecondary, opacity: 0.35 }} />
+          )}
+        </Box>
+
+        <Box sx={{ flex: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: (status !== 'idle' || errorMsg) ? 1 : 0 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={publishing}
+              onClick={() => fileInputRef.current?.click()}
+              sx={{ borderColor: c.borderLight, color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { borderColor: c.accent, color: c.accent, bgcolor: 'transparent' } }}
+            >
+              {preview ? 'Choose different' : 'Choose image'}
+            </Button>
+
+            {!preview && (
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={publishing}
+                onClick={handleUseDefault}
+                startIcon={publishing ? <CircularProgress size={12} sx={{ color: c.textSecondary }} /> : undefined}
+                sx={{ borderColor: c.borderLight, color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { borderColor: c.accent, color: c.accent, bgcolor: 'transparent' }, opacity: publishing ? 0.5 : 1 }}
+              >
+                {publishing ? 'Setting…' : 'Use default'}
+              </Button>
+            )}
+
+            {preview && !publishing && (
+              <Button
+                size="small"
+                onClick={handleDiscard}
+                sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+              >
+                Discard
+              </Button>
+            )}
+
+            {preview && (
+              <Button
+                size="small"
+                variant="contained"
+                disableElevation
+                disabled={publishing}
+                onClick={handlePublish}
+                startIcon={publishing ? <CircularProgress size={12} sx={{ color: c.accentText }} /> : undefined}
+                sx={{ bgcolor: c.accent, color: c.accentText, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.accentHover }, opacity: publishing ? 0.5 : 1 }}
+              >
+                {publishing ? 'Setting…' : 'Set avatar'}
+              </Button>
+            )}
+          </Box>
+
+          {status === 'success' && (
+            <Typography sx={{ fontSize: '0.75rem', color: c.success }}>Avatar updated.</Typography>
+          )}
+          {(status === 'error' || errorMsg) && (
+            <Typography sx={{ fontSize: '0.75rem', color: c.error }}>{errorMsg}</Typography>
+          )}
+          {!preview && status === 'idle' && !errorMsg && (
+            <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary, mt: 0.5 }}>
+              Any image · GIF max ~3.5 MB · others resized to 800 px
+            </Typography>
+          )}
+        </Box>
+      </Box>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+      />
+    </Box>
+  );
+}
+
+export function PublishDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const c = useColors();
   const account = useAtomValue(accountAtom);
-  const navigate = useNavigate();
 
   const [service, setService] = useState('ARBITRARY_DATA');
   const [file, setFile] = useState<File | null>(null);
@@ -41,6 +222,22 @@ export function PublishPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleReset = useCallback(() => {
+    setFile(null);
+    setIdentifier('');
+    setTitle('');
+    setDescription('');
+    setTagsInput('');
+    setIsMultiFileZip(false);
+    setSuccess(false);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  useEffect(() => {
+    if (open) handleReset();
+  }, [open, handleReset]);
 
   const selectedService = SERVICE_TYPES.find(s => s.value === service);
 
@@ -78,76 +275,57 @@ export function PublishPage() {
     }
   }
 
-  function handleReset() {
-    setFile(null);
-    setIdentifier('');
-    setTitle('');
-    setDescription('');
-    setTagsInput('');
-    setIsMultiFileZip(false);
-    setSuccess(false);
-    setError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }
-
   const tags = parseTags(tagsInput);
   const canPublish = !!file && !publishing;
 
-  if (!account) {
-    return (
-      <Box sx={{ pt: `${tokens.spacing.topBarHeight + 48}px`, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress size={24} sx={{ color: c.accent }} />
-      </Box>
-    );
-  }
+  function renderContent() {
+    if (!account) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress size={24} sx={{ color: c.accent }} />
+        </Box>
+      );
+    }
 
-  if (!account.name) {
-    return (
-      <Box sx={{ pt: `${tokens.spacing.topBarHeight + 48}px`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto', textAlign: 'center' }}>
-        <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
+    if (!account.name) {
+      return (
+        <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary, textAlign: 'center', py: 2 }}>
           You need a registered Qortal name to publish QDN resources.
         </Typography>
-      </Box>
-    );
-  }
+      );
+    }
 
-  if (success) {
-    return (
-      <Box sx={{ pt: `${tokens.spacing.topBarHeight + 48}px`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto', textAlign: 'center' }}>
-        <CheckCircleIcon sx={{ fontSize: '3rem', color: c.success, mb: 2 }} />
-        <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1.25rem', color: c.textPrimary, mb: 1 }}>
-          Published
-        </Typography>
-        <Typography sx={{ fontSize: '0.8rem', color: c.textSecondary, mb: 3 }}>
-          {service} / {identifier.trim() || 'default'}
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-          <Button
-            onClick={handleReset}
-            variant="contained"
-            disableElevation
-            sx={{ bgcolor: c.accent, color: c.accentText, borderRadius: '50px', '&:hover': { bgcolor: c.accentHover } }}
-          >
-            Publish another
-          </Button>
-          <Button
-            onClick={() => navigate('/')}
-            sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
-          >
-            My publishes
-          </Button>
+    if (success) {
+      return (
+        <Box sx={{ textAlign: 'center', py: 2 }}>
+          <CheckCircleIcon sx={{ fontSize: '3rem', color: c.success, mb: 2 }} />
+          <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1.25rem', color: c.textPrimary, mb: 1 }}>
+            Published
+          </Typography>
+          <Typography sx={{ fontSize: '0.8rem', color: c.textSecondary, mb: 3 }}>
+            {service} / {identifier.trim() || 'default'}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+            <Button
+              onClick={handleReset}
+              variant="contained"
+              disableElevation
+              sx={{ bgcolor: c.accent, color: c.accentText, borderRadius: '50px', '&:hover': { bgcolor: c.accentHover } }}
+            >
+              Publish another
+            </Button>
+            <Button
+              onClick={onClose}
+              sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+            >
+              Done
+            </Button>
+          </Box>
         </Box>
-      </Box>
-    );
-  }
+      );
+    }
 
-  return (
-    <Box sx={{ pt: `${tokens.spacing.topBarHeight + 24}px`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto' }}>
-
-      <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1.5rem', letterSpacing: '-0.02em', color: c.textPrimary, mb: 3 }}>
-        Publish
-      </Typography>
-
+    return (
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
         <TextField
@@ -214,11 +392,9 @@ export function PublishPage() {
               </Typography>
             </>
           ) : (
-            <>
-              <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
-                Drop a file here or click to browse
-              </Typography>
-            </>
+            <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
+              Drop a file here or click to browse
+            </Typography>
           )}
           <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} />
         </Box>
@@ -374,7 +550,45 @@ export function PublishPage() {
           </Button>
         </Box>
 
+        <NameAvatarSection name={account.name} />
+
       </Box>
-    </Box>
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => !publishing && onClose()}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: c.surface,
+          border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+          borderRadius: `${tokens.shape.radius}px`,
+          maxHeight: '90vh',
+        },
+      }}
+    >
+      <DialogTitle
+        sx={{ px: 3, pt: 2.5, pb: 0, display: 'flex', alignItems: 'center' }}
+      >
+        <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1.1rem', color: c.textPrimary, flex: 1, letterSpacing: '-0.01em' }}>
+          Publish
+        </Typography>
+        <IconButton
+          onClick={onClose}
+          disabled={publishing}
+          size="small"
+          sx={{ color: c.textSecondary, '&:hover': { color: c.textPrimary, bgcolor: c.borderLight }, borderRadius: `${tokens.shape.radius}px` }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ px: 3, pb: 3, pt: 2.5 }}>
+        {renderContent()}
+      </DialogContent>
+    </Dialog>
   );
 }

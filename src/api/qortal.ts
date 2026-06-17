@@ -60,6 +60,110 @@ export async function deleteResource(service: string, name: string, identifier: 
   });
 }
 
+export async function getResource(service: string, name: string, identifier: string): Promise<QdnResource | null> {
+  try {
+    const res = await qdnRequest({
+      action: 'LIST_QDN_RESOURCES',
+      service,
+      name,
+      identifier,
+      includeMetadata: true,
+      limit: 1,
+    }) as QdnResource[];
+    return res?.[0] ?? null;
+  } catch { return null; }
+}
+
+export async function fetchResourceAsBase64(service: string, name: string, identifier: string): Promise<string> {
+  const res = await qdnRequest({
+    action: 'FETCH_QDN_RESOURCE',
+    service,
+    name,
+    identifier,
+    encoding: 'BASE64',
+  }) as string;
+  return res;
+}
+
+export async function fetchResourceText(service: string, name: string, identifier: string): Promise<string> {
+  const b64 = await fetchResourceAsBase64(service, name, identifier);
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function resizeImage(file: File, maxDim: number, quality: number): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        blob => blob
+          ? resolve(new File([blob], 'avatar.jpg', { type: 'image/jpeg' }))
+          : reject(new Error('Canvas toBlob failed')),
+        'image/jpeg',
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+export const AVATAR_GIF_MAX_BYTES = 3.75 * 1024 * 1024;
+
+export async function publishAvatar(name: string, file: File): Promise<void> {
+  const toUpload = file.type === 'image/gif' ? file : await resizeImage(file, 800, 0.85);
+  await qdnRequest({
+    action: 'PUBLISH_QDN_RESOURCE',
+    service: 'THUMBNAIL',
+    identifier: 'avatar',
+    name,
+    data64: await fileToBase64(toUpload),
+    filename: toUpload.name,
+  });
+}
+
+export async function openInNewTab(qortalLink: string): Promise<void> {
+  await qdnRequest({ action: 'OPEN_NEW_TAB', qortalLink });
+}
+
+export async function publishAvatarFromQDN(toName: string, fromName: string): Promise<void> {
+  const b64 = await fetchResourceAsBase64('THUMBNAIL', fromName, 'avatar');
+  await qdnRequest({
+    action: 'PUBLISH_QDN_RESOURCE',
+    service: 'THUMBNAIL',
+    identifier: 'avatar',
+    name: toName,
+    data64: b64,
+    filename: 'avatar.jpg',
+  });
+}
+
+export async function getList(listName: string): Promise<string[]> {
+  try {
+    const res = await qdnRequest({ action: 'GET_LIST', listName });
+    return Array.isArray(res) ? (res as string[]) : [];
+  } catch { return []; }
+}
+
+export async function addToList(listName: string, items: string[]): Promise<boolean> {
+  const res = await qdnRequest({ action: 'ADD_TO_LIST', listName, items });
+  return res === true;
+}
+
+export async function removeFromList(listName: string, items: string[]): Promise<boolean> {
+  const res = await qdnRequest({ action: 'REMOVE_FROM_LIST', listName, items });
+  return res === true;
+}
+
 export async function searchResources(opts: {
   service?: string;
   query?: string;

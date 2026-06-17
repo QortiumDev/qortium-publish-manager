@@ -8,3 +8,21 @@ export async function fetchNameInfo(name: string): Promise<{ name: string; owner
   try { return await get<{ name: string; owner: string }>(`/names/${name}`); }
   catch { return null; }
 }
+
+export type ResourceProperties = {
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+};
+
+export async function fetchResourceProperties(
+  service: string,
+  name: string,
+  identifier: string,
+): Promise<ResourceProperties | null> {
+  try {
+    return await get<ResourceProperties>(
+      `/arbitrary/resource/properties/${service}/${encodeURIComponent(name)}/${encodeURIComponent(identifier)}`,
+    );
+  } catch { return null; }
+}

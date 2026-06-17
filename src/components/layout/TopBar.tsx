@@ -1,8 +1,8 @@
 import { useAtom } from 'jotai';
 import { Box, IconButton, Tooltip } from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import ExploreIcon from '@mui/icons-material/Explore';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -12,9 +12,9 @@ import { themeAtom } from '../../state/atoms';
 import { EnumTheme } from '../../types';
 
 const NAV = [
-  { path: '/',        icon: <FolderOpenIcon fontSize="small" />,  label: 'My Publishes' },
-  { path: '/publish', icon: <CloudUploadIcon fontSize="small" />, label: 'Publish'      },
-  { path: '/explore', icon: <ExploreIcon fontSize="small" />,     label: 'Explore'      },
+  { path: '/',        icon: <FolderOpenIcon fontSize="small" />,          label: 'My Publishes' },
+  { path: '/explore', icon: <ExploreIcon fontSize="small" />,             label: 'Explore'      },
+  { path: '/lists',   icon: <FormatListBulletedIcon fontSize="small" />,  label: 'Lists'        },
 ];
 
 export function TopBar() {

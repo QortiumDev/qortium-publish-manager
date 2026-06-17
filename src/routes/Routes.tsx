@@ -2,8 +2,8 @@ import { createHashRouter, RouterProvider, Outlet, useNavigate } from 'react-rou
 import { useEffect, useRef } from 'react';
 import { TopBar } from '../components/layout/TopBar';
 import { MyUploadsPage } from '../pages/MyUploadsPage';
-import { PublishPage } from '../pages/PublishPage';
 import { ExplorePage } from '../pages/ExplorePage';
+import { ListsPage } from '../pages/ListsPage';
 import { useIframe } from '../hooks/useIframeListener';
 
 function Layout() {
@@ -31,9 +31,9 @@ const router = createHashRouter([
     path: '/',
     element: <Layout />,
     children: [
-      { index: true,        element: <MyUploadsPage /> },
-      { path: 'publish',    element: <PublishPage />   },
-      { path: 'explore',    element: <ExplorePage />   },
+      { index: true,      element: <MyUploadsPage /> },
+      { path: 'explore',  element: <ExplorePage />   },
+      { path: 'lists',    element: <ListsPage />     },
     ],
   },
 ]);

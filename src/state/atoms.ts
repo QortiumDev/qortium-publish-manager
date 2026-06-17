@@ -14,3 +14,8 @@ export const themeAtom = atom<EnumTheme>(
 );
 export const accentAtom = atom<string>(_p.get('accent') ?? 'green');
 export const accountAtom = atom<{ address: string; name: string | null } | null>(null);
+
+// QDN pattern-based block / follow lists (loaded once from bridge, then kept in sync)
+export const blockedQdnAtom      = atom<string[]>([]);
+export const followedQdnAtom     = atom<string[]>([]);
+export const qdnListsLoadedAtom  = atom<boolean>(false);
