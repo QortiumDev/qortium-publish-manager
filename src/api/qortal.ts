@@ -164,6 +164,27 @@ export async function removeFromList(listName: string, items: string[]): Promise
   return res === true;
 }
 
+export type ResourceProperties = {
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+};
+
+export async function fetchResourceProperties(
+  service: string,
+  name: string,
+  identifier: string,
+): Promise<ResourceProperties | null> {
+  try {
+    return await qdnRequest({
+      action: 'GET_QDN_RESOURCE_PROPERTIES',
+      service,
+      name,
+      identifier,
+    }) as ResourceProperties;
+  } catch { return null; }
+}
+
 export async function searchResources(opts: {
   service?: string;
   query?: string;
