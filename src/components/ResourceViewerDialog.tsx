@@ -49,21 +49,23 @@ function buildResourceUrl(service: string, name: string, identifier: string) {
 }
 
 function buildQdnUrl(service: string, name: string, identifier: string): string {
-  const id = identifier && identifier !== 'default' ? `/${identifier}` : '';
-  return `qdn://${service}/${name}${id}`;
+  const id = identifier && identifier !== 'default' ? `/${encodeURIComponent(identifier)}` : '';
+  return `qdn://${service}/${encodeURIComponent(name)}${id}`;
 }
 
-async function copyText(text: string): Promise<boolean> {
+
+async function copyText(text: string, container?: Element): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
   try {
+    const root = container ?? document.body;
     const el = document.createElement('textarea');
     el.value = text;
     el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none';
-    document.body.appendChild(el);
+    root.appendChild(el);
     el.focus();
     el.select();
     const ok = document.execCommand('copy');
-    document.body.removeChild(el);
+    root.removeChild(el);
     return ok;
   } catch { return false; }
 }
@@ -199,7 +201,8 @@ function CopyLinkButton({ qdnUrl }: { qdnUrl: string }) {
         size="small"
         startIcon={state === 'copied' ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
         onClick={async () => {
-          const ok = await copyText(qdnUrl);
+          const container = document.querySelector('[role="dialog"]') ?? undefined;
+          const ok = await copyText(qdnUrl, container);
           setState(ok ? 'copied' : 'error');
         }}
         sx={{

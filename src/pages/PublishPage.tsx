@@ -12,7 +12,7 @@ import { useAtomValue } from 'jotai';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
-import { publishResource, publishAvatar, publishAvatarFromQDN, AVATAR_GIF_MAX_BYTES } from '../api/qortal';
+import { publishResource, publishAvatar, publishAvatarFromQDN, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
 import { SERVICE_TYPES } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -258,6 +258,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     setPublishing(true);
     setError(null);
     try {
+      if (!await ensureAccountUnlocked()) return;
       await publishResource({
         service,
         file,

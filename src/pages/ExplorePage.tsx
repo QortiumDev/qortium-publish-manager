@@ -57,8 +57,8 @@ function triggerDownload(b64: string, filename: string) {
 }
 
 function buildQdnUrl(r: QdnResource): string {
-  const id = r.identifier && r.identifier !== 'default' ? `/${r.identifier}` : '';
-  return `qdn://${r.service}/${r.name}${id}`;
+  const id = r.identifier && r.identifier !== 'default' ? `/${encodeURIComponent(r.identifier)}` : '';
+  return `qdn://${r.service}/${encodeURIComponent(r.name)}${id}`;
 }
 
 async function copyText(text: string): Promise<boolean> {

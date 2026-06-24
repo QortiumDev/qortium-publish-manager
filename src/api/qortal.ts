@@ -205,3 +205,8 @@ export async function searchResources(opts: {
     return res ?? [];
   } catch { return []; }
 }
+
+export async function ensureAccountUnlocked(): Promise<boolean> {
+  const result = await qdnRequest({ action: 'UNLOCK_SELECTED_ACCOUNT' }) as { isUnlocked?: boolean } | null;
+  return result?.isUnlocked === true;
+}

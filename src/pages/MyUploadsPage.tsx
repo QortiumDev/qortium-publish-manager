@@ -7,14 +7,36 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import LinkIcon from '@mui/icons-material/Link';
+import CheckIcon from '@mui/icons-material/Check';
 import { useAtomValue } from 'jotai';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
-import { listResources, deleteResource } from '../api/qortal';
+import { listResources, deleteResource, ensureAccountUnlocked } from '../api/qortal';
 import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
 import { PublishDialog } from './PublishPage';
 import type { QdnResource } from '../types';
+
+async function copyText(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
+  try {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(el);
+    return ok;
+  } catch { return false; }
+}
+
+function buildQdnUrl(r: QdnResource): string {
+  const id = r.identifier && r.identifier !== 'default' ? `/${encodeURIComponent(r.identifier)}` : '';
+  return `qdn://${r.service}/${encodeURIComponent(r.name)}${id}`;
+}
 
 function formatDate(ts: number | undefined): string {
   if (!ts) return '—';
@@ -26,6 +48,110 @@ function formatBytes(bytes: number | undefined): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function UploadRow({
+  r,
+  last,
+  onView,
+  onDelete,
+}: {
+  r: QdnResource;
+  last: boolean;
+  onView: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
+  const c = useColors();
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopyLink(e: React.MouseEvent) {
+    e.stopPropagation();
+    const ok = await copyText(buildQdnUrl(r));
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }
+
+  return (
+    <Box
+      onClick={onView}
+      sx={{
+        px: 2.5, py: 1.75,
+        display: 'flex', alignItems: 'center', gap: 2,
+        borderBottom: last ? 'none' : `1px solid ${c.borderLight}`,
+        cursor: 'pointer',
+        '&:hover': { bgcolor: c.borderLight },
+        transition: '0.12s ease',
+      }}
+    >
+      <Box
+        sx={{
+          fontSize: '0.6rem', fontWeight: tokens.typography.weightBold,
+          letterSpacing: '0.1em', textTransform: 'uppercase',
+          bgcolor: c.borderLight, color: c.textSecondary,
+          px: 1, py: 0.25, borderRadius: '4px', whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+      >
+        {r.service}
+      </Box>
+
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {r.title || r.identifier}
+        </Typography>
+        {r.title && (
+          <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {r.identifier}
+          </Typography>
+        )}
+      </Box>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, gap: 0.25 }}>
+        <Typography sx={{ fontSize: '0.65rem', color: c.textSecondary }}>
+          {formatDate(r.created)}
+        </Typography>
+        {r.size !== undefined && (
+          <Typography sx={{ fontSize: '0.65rem', color: c.textSecondary }}>
+            {formatBytes(r.size)}
+          </Typography>
+        )}
+      </Box>
+
+      <Tooltip title={copied ? 'Copied!' : 'Copy link'}>
+        <IconButton
+          size="small"
+          onClick={handleCopyLink}
+          sx={{
+            borderRadius: `${tokens.shape.radius}px`,
+            color: copied ? c.accent : c.textSecondary,
+            '&:hover': { color: c.accent, bgcolor: c.borderLight },
+            transition: '0.12s ease',
+            flexShrink: 0,
+          }}
+        >
+          {copied ? <CheckIcon fontSize="small" /> : <LinkIcon fontSize="small" />}
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title="Delete">
+        <IconButton
+          size="small"
+          onClick={onDelete}
+          sx={{
+            borderRadius: `${tokens.shape.radius}px`,
+            color: c.textSecondary,
+            '&:hover': { color: c.error, bgcolor: `${c.error}18` },
+            transition: '0.12s ease',
+            flexShrink: 0,
+          }}
+        >
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
 }
 
 export function MyUploadsPage() {
@@ -61,6 +187,7 @@ export function MyUploadsPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
+      if (!await ensureAccountUnlocked()) return;
       await deleteResource(deleteTarget.service, deleteTarget.name, deleteTarget.identifier);
       setResources(prev => prev.filter(r =>
         !(r.service === deleteTarget.service && r.identifier === deleteTarget.identifier)
@@ -166,68 +293,13 @@ export function MyUploadsPage() {
           </Box>
         ) : (
           filtered.map((r, i) => (
-            <Box
+            <UploadRow
               key={`${r.service}-${r.identifier}`}
-              onClick={() => setViewTarget(r)}
-              sx={{
-                px: 2.5, py: 1.75,
-                display: 'flex', alignItems: 'center', gap: 2,
-                borderBottom: i < filtered.length - 1 ? `1px solid ${c.borderLight}` : 'none',
-                cursor: 'pointer',
-                '&:hover': { bgcolor: c.borderLight },
-                transition: '0.12s ease',
-              }}
-            >
-              <Box
-                sx={{
-                  fontSize: '0.6rem', fontWeight: tokens.typography.weightBold,
-                  letterSpacing: '0.1em', textTransform: 'uppercase',
-                  bgcolor: c.borderLight, color: c.textSecondary,
-                  px: 1, py: 0.25, borderRadius: '4px', whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                {r.service}
-              </Box>
-
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {r.title || r.identifier}
-                </Typography>
-                {r.title && (
-                  <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {r.identifier}
-                  </Typography>
-                )}
-              </Box>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, gap: 0.25 }}>
-                <Typography sx={{ fontSize: '0.65rem', color: c.textSecondary }}>
-                  {formatDate(r.created)}
-                </Typography>
-                {r.size !== undefined && (
-                  <Typography sx={{ fontSize: '0.65rem', color: c.textSecondary }}>
-                    {formatBytes(r.size)}
-                  </Typography>
-                )}
-              </Box>
-
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  onClick={e => { e.stopPropagation(); setDeleteTarget(r); }}
-                  sx={{
-                    borderRadius: `${tokens.shape.radius}px`,
-                    color: c.textSecondary,
-                    '&:hover': { color: c.error, bgcolor: `${c.error}18` },
-                    transition: '0.12s ease',
-                    flexShrink: 0,
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
+              r={r}
+              last={i === filtered.length - 1}
+              onView={() => setViewTarget(r)}
+              onDelete={e => { e.stopPropagation(); setDeleteTarget(r); }}
+            />
           ))
         )}
       </Box>
