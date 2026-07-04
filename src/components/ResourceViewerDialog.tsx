@@ -16,17 +16,18 @@ import BlockIcon from '@mui/icons-material/Block';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
-import { fetchResourceText, fetchResourceAsBase64, openInNewTab, fetchResourceProperties, type ResourceProperties } from '../api/qortal';
+import { fetchResourceText, fetchResourceAsBase64, openInNewTab, openDocumentViewer, fetchResourceProperties, type ResourceProperties } from '../api/qortal';
 import type { QdnResource } from '../types';
 import { useQdnLists } from '../hooks/useQdnLists';
 import { resourcePatterns, patternLabel } from '../lib/qdnPattern';
 
-type ViewerKind = 'image' | 'audio' | 'video' | 'text' | 'app' | 'none';
+type ViewerKind = 'image' | 'audio' | 'video' | 'text' | 'app' | 'document' | 'none';
 
 const KNOWN_IMAGE_SERVICES = new Set(['IMAGE', 'THUMBNAIL']);
 const KNOWN_AUDIO_SERVICES = new Set(['AUDIO']);
 const KNOWN_VIDEO_SERVICES = new Set(['VIDEO']);
 const KNOWN_APP_SERVICES   = new Set(['APP', 'WEBSITE']);
+const DOCUMENT_VIEWER_SERVICES = new Set(['DOCUMENT', 'FILE', 'FILES', 'ATTACHMENT']);
 const BINARY_MIME_RE = /\b(pdf|zip|tar|gz|rar|7z|exe|dll|wasm|sqlite|octet-stream)\b/i;
 
 function resolveViewerKind(service: string, mimeType?: string): ViewerKind {
@@ -36,11 +37,12 @@ function resolveViewerKind(service: string, mimeType?: string): ViewerKind {
     if (/^audio\//i.test(mimeType)) return 'audio';
     if (/^video\//i.test(mimeType)) return 'video';
     if (/^text\//i.test(mimeType) || /\b(json|xml|yaml|csv|markdown)\b/i.test(mimeType)) return 'text';
-    if (BINARY_MIME_RE.test(mimeType)) return 'none';
+    if (BINARY_MIME_RE.test(mimeType)) return DOCUMENT_VIEWER_SERVICES.has(service) ? 'document' : 'none';
   }
   if (KNOWN_IMAGE_SERVICES.has(service)) return 'image';
   if (KNOWN_AUDIO_SERVICES.has(service)) return 'audio';
   if (KNOWN_VIDEO_SERVICES.has(service)) return 'video';
+  if (DOCUMENT_VIEWER_SERVICES.has(service)) return 'document';
   return 'text';
 }
 
@@ -563,6 +565,33 @@ export function ResourceViewerDialog({
           </Box>
         )}
 
+        {!propsLoading && viewerKind === 'document' && (
+          <Box
+            sx={{
+              bgcolor: c.borderLight, borderRadius: `${tokens.shape.radius}px`,
+              p: 4, textAlign: 'center',
+            }}
+          >
+            <Typography sx={{ fontSize: '0.8rem', color: c.textSecondary, mb: 2.5 }}>
+              {properties?.mimeType
+                ? `${properties.mimeType} files`
+                : 'This file type'} can be opened in the document viewer.
+            </Typography>
+            <Button
+              variant="contained"
+              disableElevation
+              startIcon={<OpenInNewIcon fontSize="small" />}
+              onClick={() => void openDocumentViewer(resource.service, resource.name, resource.identifier)}
+              sx={{
+                bgcolor: c.accent, color: c.accentText, borderRadius: '50px',
+                '&:hover': { bgcolor: c.accentHover },
+              }}
+            >
+              Open in Document Viewer
+            </Button>
+          </Box>
+        )}
+
         {!propsLoading && viewerKind === 'image' && (
           <Box
             sx={{
@@ -676,6 +705,16 @@ export function ResourceViewerDialog({
               sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
             >
               Open in Qortium
+            </Button>
+          )}
+          {viewerKind === 'document' && (
+            <Button
+              size="small"
+              startIcon={<OpenInNewIcon fontSize="small" />}
+              onClick={() => void openDocumentViewer(resource.service, resource.name, resource.identifier)}
+              sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+            >
+              Open in Viewer
             </Button>
           )}
 

@@ -282,7 +282,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   function renderContent() {
     if (!account) {
       return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4, mt: 3 }}>
           <CircularProgress size={24} sx={{ color: c.accent }} />
         </Box>
       );
@@ -290,7 +290,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
 
     if (!account.name) {
       return (
-        <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary, textAlign: 'center', py: 2 }}>
+        <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary, textAlign: 'center', py: 2, mt: 3 }}>
           You need a registered Qortal name to publish QDN resources.
         </Typography>
       );
@@ -298,7 +298,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
 
     if (success) {
       return (
-        <Box sx={{ textAlign: 'center', py: 2 }}>
+        <Box sx={{ textAlign: 'center', py: 2, mt: 3 }}>
           <CheckCircleIcon sx={{ fontSize: '3rem', color: c.success, mb: 2 }} />
           <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1.25rem', color: c.textPrimary, mb: 1 }}>
             Published
@@ -327,7 +327,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     }
 
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 3 }}>
 
         <TextField
           select
@@ -399,6 +399,12 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           )}
           <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} />
         </Box>
+
+        {file && file.size > 5 * 1024 * 1024 && (
+          <Typography sx={{ fontSize: '0.78rem', color: c.textSecondary, mt: -1 }}>
+            This file is larger than 5 MiB - Qortium Home will ask you to select it again via a system dialog when you click Publish.
+          </Typography>
+        )}
 
         {file?.name.toLowerCase().endsWith('.zip') && (
           <FormControlLabel
@@ -587,7 +593,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ px: 3, pb: 3, pt: 2.5 }}>
+      <DialogContent sx={{ px: 3, pb: 3, pt: 0 }}>
         {renderContent()}
       </DialogContent>
     </Dialog>

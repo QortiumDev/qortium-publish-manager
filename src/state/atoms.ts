@@ -6,6 +6,8 @@ const _textSize = _p.get('textSize');
 const _lang = _p.get('lang') ?? 'en';
 
 if (_textSize) document.documentElement.dataset.textSize = _textSize;
+document.documentElement.dataset.theme = _p.get('theme') === 'light' ? 'light' : 'dark';
+document.documentElement.style.colorScheme = _p.get('theme') === 'light' ? 'light' : 'dark';
 document.documentElement.lang = _lang;
 document.documentElement.dir = _lang === 'ar' || _lang === 'he' ? 'rtl' : 'ltr';
 

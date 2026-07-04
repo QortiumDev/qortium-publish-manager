@@ -66,8 +66,15 @@ export const useIframe = () => {
           window.parent.postMessage({ action: 'NAVIGATION_SUCCESS', path: data.path }, replyOrigin);
         }
       } else if (data.action === 'THEME_CHANGED') {
-        if (data.theme === 'dark') setTheme(EnumTheme.DARK);
-        else if (data.theme === 'light') setTheme(EnumTheme.LIGHT);
+        if (data.theme === 'dark') {
+          setTheme(EnumTheme.DARK);
+          document.documentElement.dataset.theme = 'dark';
+          document.documentElement.style.colorScheme = 'dark';
+        } else if (data.theme === 'light') {
+          setTheme(EnumTheme.LIGHT);
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'light';
+        }
       } else if (data.action === 'ACCENT_CHANGED' && typeof data.accent === 'string') {
         setAccent(data.accent);
       } else if (data.action === 'TEXT_SIZE_CHANGED') {

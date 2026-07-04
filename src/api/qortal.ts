@@ -29,6 +29,8 @@ export async function listResources(name: string, service?: string, offset = 0, 
   } catch { return []; }
 }
 
+const QDN_INLINE_MAX_BYTES = 5 * 1024 * 1024;
+
 export async function publishResource(opts: {
   service: string;
   file: File;
@@ -38,13 +40,15 @@ export async function publishResource(opts: {
   tags?: string[];
   isMultiFileZip?: boolean;
 }): Promise<void> {
+  const useInline = opts.file.size <= QDN_INLINE_MAX_BYTES;
+  const inlineData = useInline ? { data64: await fileToBase64(opts.file), filename: opts.file.name } : {};
+
   await qdnRequest({
     action: 'PUBLISH_QDN_RESOURCE',
     service: opts.service,
     name: (await qdnRequest({ action: 'GET_SELECTED_ACCOUNT' }) as { name: string | null }).name ?? '',
     identifier: opts.identifier,
-    data64: await fileToBase64(opts.file),
-    filename: opts.file.name,
+    ...inlineData,
     ...(opts.title       ? { title: opts.title }             : {}),
     ...(opts.description ? { description: opts.description } : {}),
     ...(opts.tags?.length ? { tags: opts.tags }              : {}),
@@ -133,6 +137,10 @@ export async function publishAvatar(name: string, file: File): Promise<void> {
 
 export async function openInNewTab(qortalLink: string): Promise<void> {
   await qdnRequest({ action: 'OPEN_NEW_TAB', qortalLink });
+}
+
+export async function openDocumentViewer(service: string, name: string, identifier: string): Promise<void> {
+  await qdnRequest({ action: 'OPEN_QDN_DOCUMENT_VIEWER', service, name, identifier });
 }
 
 export async function publishAvatarFromQDN(toName: string, fromName: string): Promise<void> {

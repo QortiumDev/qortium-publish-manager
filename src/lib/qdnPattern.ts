@@ -6,10 +6,10 @@ export interface PatternParts {
 
 // Build a canonical pattern string. Empty or '*' in any part = wildcard for that segment.
 // Trailing wildcards are stripped so "VIDEO" is stored instead of "VIDEO" + trailing stars.
-export function buildPattern(service: string, name: string, identifier: string): string {
-  const s  = service.trim()    || '*';
-  const n  = name.trim()       || '*';
-  const id = identifier.trim() || '*';
+export function buildPattern(service: string, name: string, identifier: string | undefined): string {
+  const s  = (service    ?? '').trim() || '*';
+  const n  = (name       ?? '').trim() || '*';
+  const id = (identifier ?? '').trim() || '*';
 
   if (id === '*') {
     if (n === '*') return s;
@@ -63,7 +63,7 @@ export function patternScope(pattern: string): PatternScope {
 }
 
 /** Build the three quick-action patterns for a concrete resource. */
-export function resourcePatterns(service: string, name: string, identifier: string) {
+export function resourcePatterns(service: string, name: string, identifier: string | undefined) {
   return {
     exact:      buildPattern(service, name, identifier), // this specific resource
     byName:     buildPattern('*', name, ''),             // all content by this name
