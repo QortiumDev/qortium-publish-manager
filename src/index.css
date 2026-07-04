@@ -1,30 +1,74 @@
+@font-face {
+  font-family: "Lexend";
+  src: url("./assets/fonts/lexend/Lexend-Variable.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 100 900;
+}
+
 :root {
+  --text-scale: 1;
   font-size: 16px;
   line-height: 1.2;
   box-sizing: border-box;
   font-family: 'Inter', sans-serif;
 }
 
-:root[data-text-size='extra-small'] {
+/* Classic — spec text-size ramp, driven through --text-scale on the root font-size. */
+:root[data-ui='classic'] {
+  font-family: "Lexend", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: calc(16px * var(--text-scale));
+}
+
+:root[data-ui='classic'][data-text-size='extra-small'] {
+  --text-scale: 0.88;
+}
+
+:root[data-ui='classic'][data-text-size='small'] {
+  --text-scale: 0.94;
+}
+
+:root[data-ui='classic'][data-text-size='medium'] {
+  --text-scale: 1;
+}
+
+:root[data-ui='classic'][data-text-size='large'] {
+  --text-scale: 1.3;
+}
+
+:root[data-ui='classic'][data-text-size='extra-large'] {
+  --text-scale: 1.7;
+}
+
+:root[data-ui='classic'][data-text-size='huge'] {
+  --text-scale: 2.1;
+}
+
+/* Modern — preserve the app's original absolute text-size ramp unchanged. */
+:root[data-ui='modern'] {
+  font-family: 'Inter', sans-serif;
+}
+
+:root[data-ui='modern'][data-text-size='extra-small'] {
   font-size: 16px;
 }
 
-:root[data-text-size='small'] {
+:root[data-ui='modern'][data-text-size='small'] {
   font-size: 17.92px;
 }
 
-:root[data-text-size='medium'] {
+:root[data-ui='modern'][data-text-size='medium'] {
   font-size: 19.84px;
 }
 
-:root[data-text-size='large'] {
+:root[data-ui='modern'][data-text-size='large'] {
   font-size: 22.08px;
 }
 
-:root[data-text-size='extra-large'] {
+:root[data-ui='modern'][data-text-size='extra-large'] {
   font-size: 24.96px;
 }
 
-:root[data-text-size='huge'] {
+:root[data-ui='modern'][data-text-size='huge'] {
   font-size: 27.96px;
 }

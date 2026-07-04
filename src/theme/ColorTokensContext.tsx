@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
-import { lightColors, type ColorTokens } from './tokens';
+import { classicLightColors, type ColorTokens } from './tokens';
 
-export const ColorTokensContext = createContext<ColorTokens>(lightColors);
+export const ColorTokensContext = createContext<ColorTokens>(classicLightColors);
 
 export function useColors(): ColorTokens {
   return useContext(ColorTokensContext);

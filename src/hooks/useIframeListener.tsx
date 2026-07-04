@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { themeAtom, accentAtom } from '../state/atoms';
+import { themeAtom, accentAtom, uiStyleAtom, parseUiStyle } from '../state/atoms';
 import { EnumTheme } from '../types';
 import { useSetAtom } from 'jotai';
 
@@ -17,6 +17,7 @@ type BridgeMessageData = {
   path?: unknown;
   textSize?: unknown;
   theme?: unknown;
+  uiStyle?: unknown;
 };
 
 export function isSupportedTextSize(value: unknown): value is TextSize {
@@ -51,6 +52,7 @@ export function getNavigationReplyTargetOrigin(event: MessageEvent<unknown>) {
 export const useIframe = () => {
   const setTheme = useSetAtom(themeAtom);
   const setAccent = useSetAtom(accentAtom);
+  const setUiStyle = useSetAtom(uiStyleAtom);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -77,15 +79,20 @@ export const useIframe = () => {
         }
       } else if (data.action === 'ACCENT_CHANGED' && typeof data.accent === 'string') {
         setAccent(data.accent);
+        document.documentElement.dataset.accent = data.accent;
       } else if (data.action === 'TEXT_SIZE_CHANGED') {
         applyTextSize(data.textSize);
       } else if (data.action === 'LANGUAGE_CHANGED' && typeof data.language === 'string') {
         document.documentElement.lang = data.language;
         document.documentElement.dir = data.language === 'ar' || data.language === 'he' ? 'rtl' : 'ltr';
+      } else if (data.action === 'UI_STYLE_CHANGED' && typeof data.uiStyle === 'string') {
+        const uiStyle = parseUiStyle(data.uiStyle);
+        setUiStyle(uiStyle);
+        document.documentElement.dataset.ui = uiStyle;
       }
     }
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [navigate, setTheme, setAccent]);
+  }, [navigate, setTheme, setAccent, setUiStyle]);
 };

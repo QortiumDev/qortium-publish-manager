@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { useAtom, useSetAtom } from 'jotai';
-import { lightTheme, darkTheme } from './theme/theme';
-import { lightColors, darkColors, applyAccent } from './theme/tokens';
+import { createAppTheme } from './theme/theme';
+import { getColorTokens } from './theme/tokens';
 import { ColorTokensContext } from './theme/ColorTokensContext';
-import { themeAtom, accentAtom, accountAtom } from './state/atoms';
+import { themeAtom, accentAtom, accountAtom, uiStyleAtom } from './state/atoms';
 import { EnumTheme } from './types';
 import { AppRoutes } from './routes/Routes';
 import { getUserAccount } from './api/qortal';
@@ -13,9 +13,14 @@ import { getUserAccount } from './api/qortal';
 export function App() {
   const [theme] = useAtom(themeAtom);
   const [accent] = useAtom(accentAtom);
+  const [uiStyle] = useAtom(uiStyleAtom);
   const setAccount = useSetAtom(accountAtom);
-
-  const isDark = theme === EnumTheme.DARK;
+  const mode = theme === EnumTheme.DARK ? 'dark' : 'light';
+  const colors = useMemo(() => getColorTokens(mode, uiStyle, accent), [mode, uiStyle, accent]);
+  const muiTheme = useMemo(
+    () => createAppTheme({ mode, uiStyle, colors }),
+    [mode, uiStyle, colors],
+  );
 
   useEffect(() => {
     getUserAccount()
@@ -40,9 +45,9 @@ export function App() {
   }, [setAccount]);
 
   return (
-    <ThemeProvider theme={isDark ? darkTheme : lightTheme}>
+    <ThemeProvider theme={muiTheme}>
       <CssBaseline />
-      <ColorTokensContext.Provider value={applyAccent(isDark ? darkColors : lightColors, accent)}>
+      <ColorTokensContext.Provider value={colors}>
         <AppRoutes />
       </ColorTokensContext.Provider>
     </ThemeProvider>
