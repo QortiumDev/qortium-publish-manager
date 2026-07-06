@@ -8,11 +8,16 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import CloseIcon from '@mui/icons-material/Close';
-import { useAtomValue } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
-import { accountAtom } from '../state/atoms';
-import { publishResource, publishAvatar, publishAvatarFromQDN, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
+import {
+  accountAtom,
+  publishServiceAtom, publishFileAtom, publishIdentifierAtom,
+  publishTitleAtom, publishDescriptionAtom, publishTagsInputAtom,
+  publishMultiFileZipAtom,
+} from '../state/atoms';
+import { publishResource, publishAvatar, publishAvatarFromQDN, getNamesByAddress, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
 import { SERVICE_TYPES } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -209,14 +214,16 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const c = useColors();
   const account = useAtomValue(accountAtom);
 
-  const [service, setService] = useState('ARBITRARY_DATA');
-  const [file, setFile] = useState<File | null>(null);
+  const [service, setService] = useAtom(publishServiceAtom);
+  const [selectedName, setSelectedName] = useState<string>('');
+  const [ownedNames, setOwnedNames] = useState<string[]>([]);
+  const [file, setFile] = useAtom(publishFileAtom);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [identifier, setIdentifier] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
-  const [isMultiFileZip, setIsMultiFileZip] = useState(false);
+  const [identifier, setIdentifier] = useAtom(publishIdentifierAtom);
+  const [title, setTitle] = useAtom(publishTitleAtom);
+  const [description, setDescription] = useAtom(publishDescriptionAtom);
+  const [tagsInput, setTagsInput] = useAtom(publishTagsInputAtom);
+  const [isMultiFileZip, setIsMultiFileZip] = useAtom(publishMultiFileZipAtom);
   const [publishing, setPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -233,11 +240,25 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     setSuccess(false);
     setError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, []);
+  }, [setFile, setIdentifier, setTitle, setDescription, setTagsInput, setIsMultiFileZip]);
+
+  // Draft fields deliberately survive closing the dialog; only a completed
+  // publish left on the success screen is cleared away on reopen.
+  useEffect(() => {
+    if (open && success) handleReset();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
-    if (open) handleReset();
-  }, [open, handleReset]);
+    if (!open || !account?.address) return;
+    getNamesByAddress(account.address).then(names => {
+      setOwnedNames(names);
+      if (names.length > 0 && !names.includes(selectedName)) {
+        setSelectedName(names[0]);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, account?.address]);
 
   const selectedService = SERVICE_TYPES.find(s => s.value === service);
 
@@ -261,6 +282,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
       if (!await ensureAccountUnlocked()) return;
       await publishResource({
         service,
+        name: selectedName,
         file,
         identifier: identifier.trim() || 'default',
         title:       title.trim()       || undefined,
@@ -277,7 +299,8 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   const tags = parseTags(tagsInput);
-  const canPublish = !!file && !publishing;
+  const canPublish = !!file && !publishing && !!selectedName;
+  const hasDraft = !!file || !!identifier || !!title || !!description || !!tagsInput || isMultiFileZip;
 
   function renderContent() {
     if (!account) {
@@ -304,7 +327,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
             Published
           </Typography>
           <Typography sx={{ fontSize: '0.8rem', color: c.textSecondary, mb: 3 }}>
-            {service} / {identifier.trim() || 'default'}
+            {selectedName} / {service} / {identifier.trim() || 'default'}
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
             <Button
@@ -328,6 +351,32 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
 
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 3 }}>
+
+        <TextField
+          select
+          label="Publish as"
+          value={selectedName}
+          onChange={e => setSelectedName(e.target.value)}
+          size="small"
+          fullWidth
+          disabled={ownedNames.length <= 1}
+          slotProps={{
+            inputLabel: { sx: { fontSize: '0.8rem', color: c.textSecondary } },
+            htmlInput:  { sx: { fontSize: '0.8rem', color: c.textPrimary } },
+          }}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              bgcolor: c.surface,
+              '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+              '&:hover fieldset': { borderColor: ownedNames.length > 1 ? c.accent : c.borderLight },
+              '&.Mui-focused fieldset': { borderColor: c.accent },
+            },
+          }}
+        >
+          {ownedNames.map(n => (
+            <MenuItem key={n} value={n} sx={{ fontSize: '0.8rem' }}>{n}</MenuItem>
+          ))}
+        </TextField>
 
         <TextField
           select
@@ -540,7 +589,15 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           </Typography>
         )}
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 1 }}>
+          {hasDraft && !publishing && (
+            <Button
+              onClick={handleReset}
+              sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+            >
+              Clear all
+            </Button>
+          )}
           <Button
             variant="contained"
             disableElevation
@@ -557,7 +614,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           </Button>
         </Box>
 
-        <NameAvatarSection name={account.name} />
+        <NameAvatarSection name={selectedName || account.name} />
 
       </Box>
     );

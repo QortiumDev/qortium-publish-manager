@@ -31,8 +31,18 @@ export async function listResources(name: string, service?: string, offset = 0, 
 
 const QDN_INLINE_MAX_BYTES = 5 * 1024 * 1024;
 
+export async function getNamesByAddress(address: string): Promise<string[]> {
+  try {
+    const res = await fetch(`/names/address/${encodeURIComponent(address)}?limit=0`);
+    if (!res.ok) return [];
+    const data = await res.json() as Array<{ name: string }>;
+    return data.map(d => d.name).filter(Boolean);
+  } catch { return []; }
+}
+
 export async function publishResource(opts: {
   service: string;
+  name: string;
   file: File;
   identifier: string;
   title?: string;
@@ -46,7 +56,7 @@ export async function publishResource(opts: {
   await qdnRequest({
     action: 'PUBLISH_QDN_RESOURCE',
     service: opts.service,
-    name: (await qdnRequest({ action: 'GET_SELECTED_ACCOUNT' }) as { name: string | null }).name ?? '',
+    name: opts.name,
     identifier: opts.identifier,
     ...inlineData,
     ...(opts.title       ? { title: opts.title }             : {}),

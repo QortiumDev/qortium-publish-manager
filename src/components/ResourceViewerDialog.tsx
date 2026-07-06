@@ -396,6 +396,23 @@ function BlockFollowButtons({ resource }: { resource: QdnResource }) {
           </Box>
           <Box sx={{ fontSize: '0.67rem', color: c.textSecondary }}>all content by {resource.name}</Box>
         </MenuItem>
+
+        <Divider sx={{ borderColor: c.borderLight, my: 0.5 }} />
+
+        <MenuItem
+          onClick={() => doAction(
+            isFollowed(patterns.byService) ? () => unfollow(patterns.byService) : () => follow(patterns.byService),
+            isFollowed(patterns.byService) ? 'Unfollowed' : `Following all ${resource.service}`,
+          )}
+          sx={menuItemSx}
+        >
+          <Box sx={{ fontWeight: tokens.typography.weightBold, color: isFollowed(patterns.byService) ? c.accent : c.textPrimary }}>
+            {isFollowed(patterns.byService) ? '✓ ' : ''}{resource.service}
+          </Box>
+          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary }}>
+            {patternLabel(patterns.byService)}
+          </Box>
+        </MenuItem>
       </Menu>
 
       {/* Block button */}

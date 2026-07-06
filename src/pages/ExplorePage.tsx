@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Box, Button, Chip, CircularProgress, IconButton,
   InputAdornment, TextField, Tooltip, Typography,
-  Menu, MenuItem, Divider,
+  Menu, MenuItem,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ExploreIcon from '@mui/icons-material/Explore';
@@ -11,7 +11,6 @@ import DownloadIcon from '@mui/icons-material/Download';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import LinkIcon from '@mui/icons-material/Link';
 import CheckIcon from '@mui/icons-material/Check';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
 import BlockIcon from '@mui/icons-material/Block';
@@ -79,180 +78,201 @@ async function copyText(text: string): Promise<boolean> {
   } catch { return false; }
 }
 
-// ─── Block / follow context menu for a row ────────────────────────────────────
+// ─── Visible follow / block buttons for each row ─────────────────────────────
 
-type MenuAction = 'idle' | 'busy' | 'done' | 'error';
+type BtnState = 'idle' | 'busy' | 'done' | 'error';
 
-function RowActionMenu({ r }: { r: QdnResource }) {
+function FollowButton({ r }: { r: QdnResource }) {
   const c = useColors();
-  const { block, unblock, follow, unfollow, isBlocked, isFollowed } = useQdnLists();
+  const { follow, unfollow, isFollowed } = useQdnLists();
   const patterns = resourcePatterns(r.service, r.name, r.identifier);
 
-  const [anchor,      setAnchor]      = useState<null | HTMLElement>(null);
-  const [actionState, setActionState] = useState<MenuAction>('idle');
+  const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+  const [state,  setState]  = useState<BtnState>('idle');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function flash() {
+  function flash(s: 'done' | 'error') {
     if (timerRef.current) clearTimeout(timerRef.current);
-    setActionState('done');
-    timerRef.current = setTimeout(() => setActionState('idle'), 1600);
+    setState(s);
+    timerRef.current = setTimeout(() => setState('idle'), 1600);
   }
 
   async function doAction(fn: () => Promise<void>) {
     setAnchor(null);
-    setActionState('busy');
-    try { await fn(); flash(); }
-    catch {
-      setActionState('error');
-      timerRef.current = setTimeout(() => setActionState('idle'), 1600);
-    }
+    setState('busy');
+    try { await fn(); flash('done'); }
+    catch { flash('error'); }
   }
 
-  const exactBlocked      = isBlocked(patterns.exact);
-  const exactFollowed     = isFollowed(patterns.exact);
-  const byNameBlocked     = isBlocked(patterns.byName);
-  const byNameFollowed    = isFollowed(patterns.byName);
-  const byServiceBlocked  = isBlocked(patterns.byService);
-
-  const iconColor = exactBlocked ? c.error : exactFollowed ? c.accent : c.textSecondary;
+  const exactFollowed  = isFollowed(patterns.exact);
+  const byNameFollowed = isFollowed(patterns.byName);
+  const anyFollowed    = exactFollowed || byNameFollowed;
 
   const menuSx = {
     '& .MuiPaper-root': {
       bgcolor: c.surface,
       border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
       borderRadius: `${tokens.shape.radius}px`,
-      minWidth: 240,
+      minWidth: 220,
     },
   };
   const miSx = {
     fontSize: '0.78rem', color: c.textPrimary,
     '&:hover': { bgcolor: c.borderLight },
     display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start',
-    py: 0.9, gap: 0,
+    py: 0.9,
   };
+
+  const iconColor =
+    state === 'done'  ? c.accent :
+    state === 'error' ? c.error  :
+    anyFollowed       ? c.accent :
+    c.textSecondary;
 
   return (
     <>
-      <Tooltip title={
-        actionState === 'busy'  ? 'Saving…'   :
-        actionState === 'done'  ? 'Done'       :
-        actionState === 'error' ? 'Failed'     :
-        'Follow / Block'
-      }>
+      <Tooltip title={state === 'busy' ? 'Saving…' : state === 'done' ? 'Saved' : state === 'error' ? 'Failed' : 'Follow'}>
         <span>
           <IconButton
             size="small"
             onClick={e => { e.stopPropagation(); setAnchor(e.currentTarget); }}
-            disabled={actionState === 'busy'}
+            disabled={state === 'busy'}
             sx={{
               borderRadius: `${tokens.shape.radius}px`,
-              color: actionState === 'done' ? c.accent : actionState === 'error' ? c.error : iconColor,
+              color: iconColor,
               '&:hover': { color: c.accent, bgcolor: c.borderLight },
-              transition: '0.12s ease',
-              flexShrink: 0,
+              transition: '0.12s ease', flexShrink: 0,
             }}
           >
-            {actionState === 'busy'  ? <CircularProgress size={14} sx={{ color: c.accent }} /> :
-             actionState === 'done'  ? <CheckIcon fontSize="small" /> :
-             exactBlocked            ? <BlockIcon fontSize="small" /> :
-             exactFollowed           ? <StarIcon fontSize="small" /> :
-                                       <MoreVertIcon fontSize="small" />}
+            {state === 'busy'  ? <CircularProgress size={14} sx={{ color: c.accent }} /> :
+             state === 'done'  ? <CheckIcon fontSize="small" /> :
+             anyFollowed       ? <StarIcon fontSize="small" /> :
+                                 <StarBorderIcon fontSize="small" />}
           </IconButton>
         </span>
       </Tooltip>
 
-      <Menu
-        anchorEl={anchor}
-        open={!!anchor}
-        onClose={() => setAnchor(null)}
-        onClick={e => e.stopPropagation()}
-        sx={menuSx}
-      >
-        {/* Follow actions */}
-        <MenuItem sx={{ ...miSx, color: c.textSecondary, fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', py: 0.4, pointerEvents: 'none' }}>
-          Follow
-        </MenuItem>
-
-        <MenuItem
-          onClick={() => doAction(exactFollowed ? () => unfollow(patterns.exact) : () => follow(patterns.exact))}
-          sx={miSx}
-        >
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} onClick={e => e.stopPropagation()} sx={menuSx}>
+        <MenuItem onClick={() => doAction(exactFollowed ? () => unfollow(patterns.exact) : () => follow(patterns.exact))} sx={miSx}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <StarBorderIcon sx={{ fontSize: '0.9rem', color: exactFollowed ? c.accent : c.textSecondary }} />
             <Box sx={{ fontWeight: tokens.typography.weightBold, color: exactFollowed ? c.accent : c.textPrimary }}>
-              {exactFollowed ? 'Unfollow' : 'Follow'} this resource
+              {exactFollowed ? 'Unfollow' : 'Follow'} this file
             </Box>
           </Box>
-          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>
-            {r.service}/{r.name}/{r.identifier}
-          </Box>
+          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>{r.service}/{r.name}/{r.identifier}</Box>
         </MenuItem>
-
-        <MenuItem
-          onClick={() => doAction(byNameFollowed ? () => unfollow(patterns.byName) : () => follow(patterns.byName))}
-          sx={miSx}
-        >
+        <MenuItem onClick={() => doAction(byNameFollowed ? () => unfollow(patterns.byName) : () => follow(patterns.byName))} sx={miSx}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <StarBorderIcon sx={{ fontSize: '0.9rem', color: byNameFollowed ? c.accent : c.textSecondary }} />
             <Box sx={{ fontWeight: tokens.typography.weightBold, color: byNameFollowed ? c.accent : c.textPrimary }}>
               {byNameFollowed ? 'Unfollow' : 'Follow'} all by {r.name}
             </Box>
           </Box>
-          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>
-            */{r.name}
-          </Box>
+          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>*/{r.name}</Box>
         </MenuItem>
+      </Menu>
+    </>
+  );
+}
 
-        <Divider sx={{ borderColor: c.borderLight, my: 0.5 }} />
+function BlockButton({ r }: { r: QdnResource }) {
+  const c = useColors();
+  const { block, unblock, isBlocked } = useQdnLists();
+  const patterns = resourcePatterns(r.service, r.name, r.identifier);
 
-        {/* Block actions */}
-        <MenuItem sx={{ ...miSx, color: c.textSecondary, fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', py: 0.4, pointerEvents: 'none' }}>
-          Block
-        </MenuItem>
+  const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+  const [state,  setState]  = useState<BtnState>('idle');
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-        <MenuItem
-          onClick={() => doAction(exactBlocked ? () => unblock(patterns.exact) : () => block(patterns.exact))}
-          sx={miSx}
-        >
+  function flash(s: 'done' | 'error') {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setState(s);
+    timerRef.current = setTimeout(() => setState('idle'), 1600);
+  }
+
+  async function doAction(fn: () => Promise<void>) {
+    setAnchor(null);
+    setState('busy');
+    try { await fn(); flash('done'); }
+    catch { flash('error'); }
+  }
+
+  const exactBlocked     = isBlocked(patterns.exact);
+  const byNameBlocked    = isBlocked(patterns.byName);
+  const byServiceBlocked = isBlocked(patterns.byService);
+  const anyBlocked       = exactBlocked || byNameBlocked || byServiceBlocked;
+
+  const menuSx = {
+    '& .MuiPaper-root': {
+      bgcolor: c.surface,
+      border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+      borderRadius: `${tokens.shape.radius}px`,
+      minWidth: 220,
+    },
+  };
+  const miSx = {
+    fontSize: '0.78rem', color: c.textPrimary,
+    '&:hover': { bgcolor: c.borderLight },
+    display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start',
+    py: 0.9,
+  };
+
+  const iconColor =
+    state === 'done'  ? c.accent :
+    state === 'error' ? c.error  :
+    anyBlocked        ? c.error  :
+    c.textSecondary;
+
+  return (
+    <>
+      <Tooltip title={state === 'busy' ? 'Saving…' : state === 'done' ? 'Saved' : state === 'error' ? 'Failed' : 'Block'}>
+        <span>
+          <IconButton
+            size="small"
+            onClick={e => { e.stopPropagation(); setAnchor(e.currentTarget); }}
+            disabled={state === 'busy'}
+            sx={{
+              borderRadius: `${tokens.shape.radius}px`,
+              color: iconColor,
+              '&:hover': { color: c.error, bgcolor: c.borderLight },
+              transition: '0.12s ease', flexShrink: 0,
+            }}
+          >
+            {state === 'busy' ? <CircularProgress size={14} sx={{ color: c.accent }} /> :
+             state === 'done' ? <CheckIcon fontSize="small" /> :
+                                <BlockIcon fontSize="small" />}
+          </IconButton>
+        </span>
+      </Tooltip>
+
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} onClick={e => e.stopPropagation()} sx={menuSx}>
+        <MenuItem onClick={() => doAction(exactBlocked ? () => unblock(patterns.exact) : () => block(patterns.exact))} sx={miSx}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <BlockIcon sx={{ fontSize: '0.9rem', color: exactBlocked ? c.error : c.textSecondary }} />
             <Box sx={{ fontWeight: tokens.typography.weightBold, color: exactBlocked ? c.error : c.textPrimary }}>
-              {exactBlocked ? 'Unblock' : 'Block'} this resource
+              {exactBlocked ? 'Unblock' : 'Block'} this file
             </Box>
           </Box>
-          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>
-            {r.service}/{r.name}/{r.identifier}
-          </Box>
+          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>{r.service}/{r.name}/{r.identifier}</Box>
         </MenuItem>
-
-        <MenuItem
-          onClick={() => doAction(byNameBlocked ? () => unblock(patterns.byName) : () => block(patterns.byName))}
-          sx={miSx}
-        >
+        <MenuItem onClick={() => doAction(byNameBlocked ? () => unblock(patterns.byName) : () => block(patterns.byName))} sx={miSx}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <BlockIcon sx={{ fontSize: '0.9rem', color: byNameBlocked ? c.error : c.textSecondary }} />
             <Box sx={{ fontWeight: tokens.typography.weightBold, color: byNameBlocked ? c.error : c.textPrimary }}>
               {byNameBlocked ? 'Unblock' : 'Block'} all by {r.name}
             </Box>
           </Box>
-          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>
-            */{r.name}
-          </Box>
+          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>*/{r.name}</Box>
         </MenuItem>
-
-        <MenuItem
-          onClick={() => doAction(byServiceBlocked ? () => unblock(patterns.byService) : () => block(patterns.byService))}
-          sx={miSx}
-        >
+        <MenuItem onClick={() => doAction(byServiceBlocked ? () => unblock(patterns.byService) : () => block(patterns.byService))} sx={miSx}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <BlockIcon sx={{ fontSize: '0.9rem', color: byServiceBlocked ? c.error : c.textSecondary }} />
             <Box sx={{ fontWeight: tokens.typography.weightBold, color: byServiceBlocked ? c.error : c.textPrimary }}>
               {byServiceBlocked ? 'Unblock' : 'Block'} all {r.service}
             </Box>
           </Box>
-          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>
-            {r.service}
-          </Box>
+          <Box sx={{ fontSize: '0.67rem', color: c.textSecondary, pl: 2.25 }}>{r.service}</Box>
         </MenuItem>
       </Menu>
     </>
@@ -388,7 +408,8 @@ function ResourceRow({
         </span>
       </Tooltip>
 
-      <RowActionMenu r={r} />
+      <FollowButton r={r} />
+      <BlockButton r={r} />
     </Box>
   );
 }

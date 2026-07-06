@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box, Button, Chip, CircularProgress, IconButton,
-  MenuItem, Select, TextField, Tooltip, Typography,
+  MenuItem, Select, TextField, Tooltip, Typography, Tab, Tabs,
+  FormControlLabel, Checkbox, ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 import BlockIcon from '@mui/icons-material/Block';
+import PersonIcon from '@mui/icons-material/Person';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AddIcon from '@mui/icons-material/Add';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { getList, addToList, removeFromList } from '../api/qortal';
@@ -16,7 +20,7 @@ import {
 } from '../lib/qdnPattern';
 import { SERVICE_TYPES } from '../types';
 
-// ─── Pattern scope badge ───────────────────────────────────────────────────────
+// ─── Scope badge ─────────────────────────────────────────────────────────────
 
 const SCOPE_LABEL: Record<PatternScope, string> = {
   broad:    'service',
@@ -38,22 +42,23 @@ function ScopeBadge({ scope }: { scope: PatternScope }) {
       px: 0.75, py: 0.2, borderRadius: '4px',
       border: `1px solid ${colors[scope]}40`,
       color: colors[scope],
-      flexShrink: 0,
-      lineHeight: 1.5,
+      flexShrink: 0, lineHeight: 1.5,
     }}>
       {SCOPE_LABEL[scope]}
     </Box>
   );
 }
 
-// ─── Single pattern entry ──────────────────────────────────────────────────────
+// ─── Pattern item row ─────────────────────────────────────────────────────────
 
 function PatternItem({
   pattern,
   onRemove,
+  accentColor,
 }: {
   pattern: string;
   onRemove: () => Promise<void>;
+  accentColor?: string;
 }) {
   const c = useColors();
   const [removing, setRemoving] = useState(false);
@@ -72,7 +77,6 @@ function PatternItem({
       borderRadius: `${tokens.shape.radius}px`,
     }}>
       <ScopeBadge scope={patternScope(pattern)} />
-
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{
           fontFamily: 'monospace', fontSize: '0.8rem',
@@ -85,18 +89,13 @@ function PatternItem({
           {patternLabel(pattern)}
         </Typography>
       </Box>
-
       <Tooltip title="Remove">
         <span>
           <IconButton
             size="small"
             onClick={handleRemove}
             disabled={removing}
-            sx={{
-              color: c.textSecondary,
-              '&:hover': { color: c.error },
-              transition: '0.12s ease',
-            }}
+            sx={{ color: c.textSecondary, '&:hover': { color: accentColor ?? c.error }, transition: '0.12s ease' }}
           >
             {removing
               ? <CircularProgress size={12} sx={{ color: c.textSecondary }} />
@@ -108,78 +107,158 @@ function PatternItem({
   );
 }
 
-// ─── Wildcard-toggleable text field ───────────────────────────────────────────
+// ─── Person follow item row ───────────────────────────────────────────────────
 
-function WildcardField({
-  value,
-  onChange,
-  isWild,
-  onToggleWild,
-  placeholder,
-  width = 130,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  isWild: boolean;
-  onToggleWild: () => void;
-  placeholder: string;
-  width?: number;
-}) {
+function PersonFollowItem({ name, onRemove }: { name: string; onRemove: () => Promise<void> }) {
   const c = useColors();
+  const [removing, setRemoving] = useState(false);
+
+  async function handleRemove() {
+    setRemoving(true);
+    try { await onRemove(); } finally { setRemoving(false); }
+  }
+
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <TextField
-        size="small"
-        value={isWild ? '' : value}
-        onChange={e => onChange(e.target.value)}
-        disabled={isWild}
-        placeholder={isWild ? '—' : placeholder}
-        sx={{
-          width,
-          '& .MuiOutlinedInput-root': {
-            fontSize: '0.8rem',
-            bgcolor: isWild ? c.borderLight : c.surface,
-            '& fieldset': { borderColor: c.borderLight },
-            '&:hover fieldset': { borderColor: isWild ? c.borderLight : c.accent },
-            '&.Mui-focused fieldset': { borderColor: c.accent },
-          },
-          '& input': { color: c.textPrimary, fontFamily: 'monospace' },
-          '& input::placeholder': { fontFamily: 'inherit' },
-        }}
-      />
-      <Tooltip title={isWild ? 'Enter a specific value' : 'Match any value (wildcard)'}>
-        <Chip
-          label="*"
-          size="small"
-          onClick={onToggleWild}
-          sx={{
-            fontFamily: 'monospace', fontWeight: tokens.typography.weightBold,
-            fontSize: '0.8rem', cursor: 'pointer', px: 0.25,
-            bgcolor: isWild ? c.accent : 'transparent',
-            color:   isWild ? c.accentText : c.textSecondary,
-            border:  `1.5px solid ${isWild ? c.accent : c.borderLight}`,
-            '&:hover': { bgcolor: isWild ? c.accentHover : c.borderLight },
-            transition: '0.12s ease',
-          }}
-        />
+    <Box sx={{
+      display: 'flex', alignItems: 'center', gap: 1.25,
+      px: 1.5, py: 0.9,
+      bgcolor: c.surface,
+      border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+      borderRadius: `${tokens.shape.radius}px`,
+    }}>
+      <PersonIcon sx={{ fontSize: '0.95rem', color: c.accent, flexShrink: 0 }} />
+      <Typography sx={{ flex: 1, fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {name}
+      </Typography>
+      <Box sx={{
+        fontSize: '0.55rem', fontWeight: tokens.typography.weightBold,
+        letterSpacing: '0.1em', textTransform: 'uppercase',
+        px: 0.75, py: 0.2, borderRadius: '4px',
+        border: `1px solid ${c.accent}40`, color: c.accent,
+        flexShrink: 0, lineHeight: 1.5,
+      }}>
+        creator
+      </Box>
+      <Tooltip title="Unfollow">
+        <span>
+          <IconButton
+            size="small"
+            onClick={handleRemove}
+            disabled={removing}
+            sx={{ color: c.textSecondary, '&:hover': { color: c.error }, transition: '0.12s ease' }}
+          >
+            {removing
+              ? <CircularProgress size={12} sx={{ color: c.textSecondary }} />
+              : <CloseIcon sx={{ fontSize: '0.9rem' }} />}
+          </IconButton>
+        </span>
       </Tooltip>
     </Box>
   );
 }
 
-// ─── Pattern add form ──────────────────────────────────────────────────────────
+// ─── Person block item row ────────────────────────────────────────────────────
 
-function PatternForm({
-  onAdd,
-  existing,
-  accentOverride,
+interface PersonBlockEntry {
+  value: string;
+  isAddress: boolean;
+  blockedContent: boolean;
+  blockedChat: boolean;
+}
+
+function PersonBlockItem({
+  entry,
+  onRemoveBadge,
 }: {
-  onAdd: (pattern: string) => Promise<void>;
-  existing: string[];
-  accentOverride?: string;
+  entry: PersonBlockEntry;
+  onRemoveBadge: (which: 'content' | 'chat' | 'all') => Promise<void>;
 }) {
   const c = useColors();
-  const accent = accentOverride ?? c.accent;
+  const [removingContent, setRemovingContent] = useState(false);
+  const [removingChat, setRemovingChat] = useState(false);
+
+  const hasBoth = entry.blockedContent && entry.blockedChat;
+
+  async function handleContent() {
+    setRemovingContent(true);
+    try { await onRemoveBadge(hasBoth ? 'content' : 'all'); } finally { setRemovingContent(false); }
+  }
+
+  async function handleChat() {
+    setRemovingChat(true);
+    try { await onRemoveBadge(hasBoth ? 'chat' : 'all'); } finally { setRemovingChat(false); }
+  }
+
+  return (
+    <Box sx={{
+      display: 'flex', alignItems: 'center', gap: 1.25,
+      px: 1.5, py: 0.9,
+      bgcolor: c.surface,
+      border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+      borderRadius: `${tokens.shape.radius}px`,
+    }}>
+      <PersonIcon sx={{ fontSize: '0.95rem', color: c.textSecondary, flexShrink: 0 }} />
+      <Typography sx={{
+        flex: 1, fontSize: entry.isAddress ? '0.72rem' : '0.85rem',
+        fontFamily: entry.isAddress ? 'monospace' : undefined,
+        fontWeight: tokens.typography.weightBold,
+        color: c.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {entry.value}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+        {entry.blockedContent && (
+          <Tooltip title={hasBoth ? 'Remove content block' : 'Remove block'}>
+            <Chip
+              label={removingContent ? '' : 'content'}
+              size="small"
+              onDelete={handleContent}
+              deleteIcon={removingContent ? <CircularProgress size={10} sx={{ color: `${c.error}99` }} /> : undefined}
+              sx={{
+                fontSize: '0.6rem', fontWeight: tokens.typography.weightBold, letterSpacing: '0.06em',
+                textTransform: 'uppercase', bgcolor: `${c.error}15`, color: c.error,
+                border: `1px solid ${c.error}35`,
+                '& .MuiChip-deleteIcon': { color: `${c.error}99`, '&:hover': { color: c.error } },
+              }}
+            />
+          </Tooltip>
+        )}
+        {entry.blockedChat && (
+          <Tooltip title={hasBoth ? 'Remove chat block' : 'Remove block'}>
+            <Chip
+              label={removingChat ? '' : 'chat'}
+              size="small"
+              onDelete={handleChat}
+              deleteIcon={removingChat ? <CircularProgress size={10} sx={{ color: `${c.textSecondary}99` }} /> : undefined}
+              sx={{
+                fontSize: '0.6rem', fontWeight: tokens.typography.weightBold, letterSpacing: '0.06em',
+                textTransform: 'uppercase', bgcolor: c.borderLight, color: c.textSecondary,
+                border: `1px solid ${c.borderLight}`,
+                '& .MuiChip-deleteIcon': { color: c.textSecondary, '&:hover': { color: c.error } },
+              }}
+            />
+          </Tooltip>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Content pattern wizard form ──────────────────────────────────────────────
+
+function ContentPatternWizard({
+  mode,
+  existing,
+  onAdd,
+  onBack,
+}: {
+  mode: 'follow' | 'block';
+  existing: string[];
+  onAdd: (pattern: string) => Promise<void>;
+  onBack: () => void;
+}) {
+  const c = useColors();
+  const accent = mode === 'block' ? c.error : c.accent;
 
   const [service,  setService]  = useState('*');
   const [nameWild, setNameWild] = useState(true);
@@ -203,361 +282,787 @@ function PatternForm({
     setError('');
     try {
       await onAdd(pattern);
-      // reset name+id fields after successful add
-      setName('');
-      setId('');
-      setNameWild(true);
-      setIdWild(true);
+      setName(''); setId(''); setNameWild(true); setIdWild(true); setService('*');
     } catch {
-      setError('Failed to add pattern. Please try again.');
+      setError('Failed to add. Please try again.');
     } finally {
       setAdding(false);
     }
   }
 
-  const selectSx = {
-    minWidth: 152, fontSize: '0.8rem',
-    '& .MuiSelect-select': { py: '6.5px' },
-    '& fieldset': { borderColor: c.borderLight },
-    '&:hover fieldset': { borderColor: c.accent },
-    '&.Mui-focused fieldset': { borderColor: c.accent },
-    color: c.textPrimary,
+  const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+      fontSize: '0.82rem', bgcolor: c.surface,
+      '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+      '&:hover fieldset': { borderColor: accent },
+      '&.Mui-focused fieldset': { borderColor: accent },
+    },
+    '& input': { color: c.textPrimary },
+  };
+
+  const wildChipSx = (active: boolean) => ({
+    fontSize: '0.72rem', cursor: 'pointer', px: 0.5, alignSelf: 'center',
+    bgcolor: active ? accent : 'transparent',
+    color: active ? '#fff' : c.textSecondary,
+    border: `1.5px solid ${active ? accent : c.borderLight}`,
+    '&:hover': { bgcolor: active ? accent : c.borderLight },
+    transition: '0.12s ease',
+  });
+
+  const labelSx = {
+    fontSize: '0.68rem', fontWeight: tokens.typography.weightBold,
+    color: c.textSecondary, mb: 0.5,
+    letterSpacing: '0.06em', textTransform: 'uppercase' as const,
   };
 
   return (
-    <Box sx={{ mt: 2 }}>
-      {/* Row: service / name / identifier */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-        {/* Service */}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Content type */}
+      <Box>
+        <Typography sx={labelSx}>Content type</Typography>
         <Select
           size="small"
           value={service}
           onChange={e => setService(e.target.value)}
-          sx={selectSx}
+          fullWidth
+          sx={{
+            fontSize: '0.82rem', color: c.textPrimary,
+            '& .MuiSelect-select': { py: '7px' },
+            '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+            '&:hover fieldset': { borderColor: accent },
+            '&.Mui-focused fieldset': { borderColor: accent },
+            bgcolor: c.surface,
+          }}
           MenuProps={{ PaperProps: { sx: { bgcolor: c.surface, color: c.textPrimary } } }}
         >
-          <MenuItem value="*" sx={{ fontSize: '0.8rem', fontStyle: 'italic' }}>* (any type)</MenuItem>
+          <MenuItem value="*" sx={{ fontSize: '0.82rem', fontStyle: 'italic', color: c.textSecondary }}>
+            Any type
+          </MenuItem>
           {SERVICE_TYPES.map(st => (
-            <MenuItem key={st.value} value={st.value} sx={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
-              {st.value}
+            <MenuItem key={st.value} value={st.value} sx={{ fontSize: '0.82rem' }}>
+              {st.label}
             </MenuItem>
           ))}
         </Select>
+      </Box>
 
-        <Typography sx={{ color: c.textSecondary, fontFamily: 'monospace', fontSize: '1rem', userSelect: 'none' }}>
-          /
-        </Typography>
+      {/* Creator */}
+      <Box>
+        <Typography sx={labelSx}>Creator</Typography>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
+          <TextField
+            size="small"
+            value={nameWild ? '' : name}
+            onChange={e => setName(e.target.value)}
+            disabled={nameWild}
+            placeholder={nameWild ? '—' : 'Name'}
+            sx={{ flex: 1, ...fieldSx }}
+          />
+          <Chip
+            label="Anyone"
+            size="small"
+            onClick={() => setNameWild(w => !w)}
+            sx={wildChipSx(nameWild)}
+          />
+        </Box>
+      </Box>
 
-        <WildcardField
-          value={name}
-          onChange={setName}
-          isWild={nameWild}
-          onToggleWild={() => setNameWild(w => !w)}
-          placeholder="name"
-        />
-
-        <Typography sx={{ color: c.textSecondary, fontFamily: 'monospace', fontSize: '1rem', userSelect: 'none' }}>
-          /
-        </Typography>
-
-        <WildcardField
-          value={id}
-          onChange={setId}
-          isWild={idWild}
-          onToggleWild={() => setIdWild(w => !w)}
-          placeholder="identifier"
-          width={160}
-        />
-
-        <Button
-          variant="contained"
-          disableElevation
-          size="small"
-          onClick={handleAdd}
-          disabled={!canAdd}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          sx={{
-            bgcolor: accent,
-            color: c.accentText,
-            borderRadius: '50px',
-            px: 2.5, fontSize: '0.72rem',
-            '&:hover': { bgcolor: c.accentHover },
-            '&.Mui-disabled': { opacity: 0.35, bgcolor: accent, color: c.accentText },
-          }}
-        >
-          {adding ? <CircularProgress size={12} sx={{ color: c.accentText }} /> : 'Add'}
-        </Button>
+      {/* Content ID */}
+      <Box>
+        <Typography sx={labelSx}>Content ID</Typography>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
+          <TextField
+            size="small"
+            value={idWild ? '' : id}
+            onChange={e => setId(e.target.value)}
+            disabled={idWild}
+            placeholder={idWild ? '—' : 'Identifier'}
+            sx={{ flex: 1, ...fieldSx, '& input': { fontFamily: 'monospace', color: c.textPrimary } }}
+          />
+          <Chip
+            label="Any"
+            size="small"
+            onClick={() => setIdWild(w => !w)}
+            sx={wildChipSx(idWild)}
+          />
+        </Box>
       </Box>
 
       {/* Preview */}
-      <Box sx={{ mt: 0.75, display: 'flex', alignItems: 'baseline', gap: 1 }}>
-        <Typography sx={{
-          fontFamily: 'monospace', fontSize: '0.78rem',
-          color: c.textPrimary, fontWeight: tokens.typography.weightBold,
-        }}>
-          {pattern}
+      <Box sx={{
+        px: 1.5, py: 1,
+        bgcolor: `${accent}0d`, borderRadius: `${tokens.shape.radius}px`,
+        border: `1px solid ${accent}25`,
+      }}>
+        <Typography sx={{ fontSize: '0.68rem', color: c.textSecondary, mb: 0.25 }}>Result</Typography>
+        <Typography sx={{ fontSize: '0.88rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
+          {mode === 'follow' ? 'Follow' : 'Block'} {label.toLowerCase()}
         </Typography>
-        <Typography sx={{ fontSize: '0.67rem', color: c.textSecondary }}>
-          — {label}
-        </Typography>
+        {isDup     && <Typography sx={{ fontSize: '0.7rem', color: c.error, mt: 0.25 }}>Already in list.</Typography>}
+        {isAllWild && !isDup && <Typography sx={{ fontSize: '0.7rem', color: c.error, mt: 0.25 }}>Pattern must be more specific than all resources.</Typography>}
       </Box>
 
-      {/* Hint line */}
-      <Typography sx={{ fontSize: '0.65rem', color: c.textSecondary, mt: 0.25 }}>
-        Use <Box component="span" sx={{ fontFamily: 'monospace' }}>*</Box> to match anything.
-        &nbsp;Examples: <Box component="span" sx={{ fontFamily: 'monospace' }}>VIDEO/*/cat*</Box>,{' '}
-        <Box component="span" sx={{ fontFamily: 'monospace' }}>*/TOM</Box>
-      </Typography>
+      {error && <Typography sx={{ fontSize: '0.75rem', color: c.error }}>{error}</Typography>}
 
-      {isDup    && <Typography sx={{ fontSize: '0.72rem', color: c.error, mt: 0.5 }}>Already in list.</Typography>}
-      {isAllWild && !isDup && <Typography sx={{ fontSize: '0.72rem', color: c.error, mt: 0.5 }}>Pattern must be more specific than */*/*.</Typography>}
-      {error    && <Typography sx={{ fontSize: '0.72rem', color: c.error, mt: 0.5 }}>{error}</Typography>}
+      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+        <Button
+          size="small"
+          onClick={onBack}
+          startIcon={<ArrowBackIcon sx={{ fontSize: '0.85rem' }} />}
+          sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+        >
+          Back
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          disableElevation
+          onClick={handleAdd}
+          disabled={!canAdd}
+          sx={{
+            bgcolor: accent, color: '#fff', borderRadius: '50px', fontSize: '0.75rem',
+            '&:hover': { filter: 'brightness(0.9)' },
+            '&.Mui-disabled': { opacity: 0.35, bgcolor: accent, color: '#fff' },
+          }}
+        >
+          {adding
+            ? <CircularProgress size={12} sx={{ color: '#fff' }} />
+            : (mode === 'follow' ? 'Follow' : 'Block')}
+        </Button>
+      </Box>
     </Box>
   );
 }
 
-// ─── QDN pattern list section ──────────────────────────────────────────────────
+// ─── Person follow wizard form ─────────────────────────────────────────────────
 
-function QdnListSection({
-  title,
-  description,
-  icon,
-  items,
+function PersonFollowWizard({
+  existing,
   onAdd,
-  onRemove,
-  accentOverride,
+  onBack,
 }: {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  items: string[];
-  onAdd: (pattern: string) => Promise<void>;
-  onRemove: (pattern: string) => Promise<void>;
-  accentOverride?: string;
+  existing: string[];
+  onAdd: (name: string) => Promise<void>;
+  onBack: () => void;
 }) {
   const c = useColors();
-
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-        <Box sx={{ color: accentOverride ?? c.accent, display: 'flex' }}>
-          {icon}
-        </Box>
-        <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1rem', color: c.textPrimary }}>
-          {title}
-        </Typography>
-        {items.length > 0 && (
-          <Box sx={{
-            fontSize: '0.65rem', fontWeight: tokens.typography.weightBold,
-            bgcolor: c.borderLight, color: c.textSecondary,
-            px: 0.75, py: 0.1, borderRadius: '50px',
-          }}>
-            {items.length}
-          </Box>
-        )}
-      </Box>
-      <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mb: 1.5 }}>
-        {description}
-      </Typography>
-
-      {/* Pattern list */}
-      {items.length > 0 ? (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 1 }}>
-          {items.map(pattern => (
-            <PatternItem
-              key={pattern}
-              pattern={pattern}
-              onRemove={() => onRemove(pattern)}
-            />
-          ))}
-        </Box>
-      ) : (
-        <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, fontStyle: 'italic', mb: 0.5 }}>
-          None
-        </Typography>
-      )}
-
-      <PatternForm onAdd={onAdd} existing={items} accentOverride={accentOverride} />
-    </Box>
-  );
-}
-
-// ─── Simple name/address list section (existing behaviour) ─────────────────────
-
-function SimpleListSection({
-  title,
-  description,
-  listName,
-  isAddress,
-}: {
-  title: string;
-  description: string;
-  listName: string;
-  isAddress?: boolean;
-}) {
-  const c = useColors();
-  const [items,  setItems]  = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [input,  setInput]  = useState('');
+  const [value, setValue] = useState('');
   const [adding, setAdding] = useState(false);
-  const [error,  setError]  = useState('');
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const res = await getList(listName);
-      setItems(res);
-      setLoading(false);
-    })();
-  }, [listName]);
+  const trimmed = value.trim();
+  const isDup = existing.some(n => n.toLowerCase() === trimmed.toLowerCase());
+  const canAdd = !!trimmed && !isDup && !adding;
 
   async function handleAdd() {
-    const value = input.trim();
-    if (!value) return;
-    if (items.some(i => i.toLowerCase() === value.toLowerCase())) {
-      setInput('');
-      return;
-    }
+    if (!canAdd) return;
     setAdding(true);
     setError('');
     try {
-      await addToList(listName, [value]);
-      setItems(prev => [...prev, value]);
-      setInput('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add.');
+      await onAdd(trimmed);
+      setValue('');
+    } catch {
+      setError('Failed to add. Please try again.');
     } finally {
       setAdding(false);
     }
   }
 
-  async function handleRemove(item: string) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box>
+        <Typography sx={{ fontSize: '0.68rem', fontWeight: tokens.typography.weightBold, color: c.textSecondary, mb: 0.5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Name
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          placeholder="Creator name"
+          helperText={isDup ? 'Already following.' : 'Your node will proactively cache all content from this creator.'}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              fontSize: '0.82rem', bgcolor: c.surface,
+              '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+              '&:hover fieldset': { borderColor: c.accent },
+              '&.Mui-focused fieldset': { borderColor: c.accent },
+            },
+            '& input': { color: c.textPrimary },
+            '& .MuiFormHelperText-root': { fontSize: '0.7rem', color: isDup ? c.error : c.textSecondary },
+          }}
+        />
+      </Box>
+
+      {error && <Typography sx={{ fontSize: '0.75rem', color: c.error }}>{error}</Typography>}
+
+      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+        <Button
+          size="small"
+          onClick={onBack}
+          startIcon={<ArrowBackIcon sx={{ fontSize: '0.85rem' }} />}
+          sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+        >
+          Back
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          disableElevation
+          onClick={handleAdd}
+          disabled={!canAdd}
+          sx={{
+            bgcolor: c.accent, color: '#fff', borderRadius: '50px', fontSize: '0.75rem',
+            '&:hover': { bgcolor: c.accentHover },
+            '&.Mui-disabled': { opacity: 0.35, bgcolor: c.accent, color: '#fff' },
+          }}
+        >
+          {adding ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Follow'}
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Person block wizard form ──────────────────────────────────────────────────
+
+function PersonBlockWizard({
+  existingNames,
+  existingAddresses,
+  existingChatNames,
+  existingChatAddresses,
+  onAdd,
+  onBack,
+}: {
+  existingNames: string[];
+  existingAddresses: string[];
+  existingChatNames: string[];
+  existingChatAddresses: string[];
+  onAdd: (value: string, isAddress: boolean, blockContent: boolean, blockChat: boolean) => Promise<void>;
+  onBack: () => void;
+}) {
+  const c = useColors();
+  const [value, setValue] = useState('');
+  const [isAddress, setIsAddress] = useState(false);
+  const [blockContent, setBlockContent] = useState(true);
+  const [blockChat, setBlockChat] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
+
+  const trimmed = value.trim();
+  const alreadyHasContent = isAddress ? existingAddresses.includes(trimmed) : existingNames.includes(trimmed);
+  const alreadyHasChat = isAddress ? existingChatAddresses.includes(trimmed) : existingChatNames.includes(trimmed);
+  const isDup = (blockContent && alreadyHasContent) || (blockChat && alreadyHasChat);
+  const nothingSelected = !blockContent && !blockChat;
+  const canAdd = !!trimmed && !isDup && !nothingSelected && !adding;
+
+  async function handleAdd() {
+    if (!canAdd) return;
+    setAdding(true);
     setError('');
     try {
-      await removeFromList(listName, [item]);
-      setItems(prev => prev.filter(i => i !== item));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to remove.');
+      const actualContent = blockContent && !alreadyHasContent;
+      const actualChat = blockChat && !alreadyHasChat;
+      await onAdd(trimmed, isAddress, actualContent, actualChat);
+      setValue('');
+      setIsAddress(false);
+      setBlockContent(true);
+      setBlockChat(true);
+    } catch {
+      setError('Failed to add. Please try again.');
+    } finally {
+      setAdding(false);
     }
   }
 
+  const labelSx = {
+    fontSize: '0.68rem', fontWeight: tokens.typography.weightBold,
+    color: c.textSecondary, mb: 0.5, letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+  };
+
   return (
-    <Box>
-      <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1rem', color: c.textPrimary, mb: 0.5 }}>
-        {title}
-      </Typography>
-      <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mb: 2 }}>
-        {description}
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Input + type toggle */}
+      <Box>
+        <Typography sx={labelSx}>Name or address</Typography>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
+          <TextField
+            size="small"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder={isAddress ? 'Q…' : 'Creator name'}
+            sx={{
+              flex: 1,
+              '& .MuiOutlinedInput-root': {
+                fontSize: '0.82rem', bgcolor: c.surface,
+                fontFamily: isAddress ? 'monospace' : undefined,
+                '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+                '&:hover fieldset': { borderColor: c.error },
+                '&.Mui-focused fieldset': { borderColor: c.error },
+              },
+              '& input': { color: c.textPrimary, fontFamily: isAddress ? 'monospace' : undefined },
+            }}
+          />
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={isAddress ? 'address' : 'name'}
+            onChange={(_, v) => { if (v) setIsAddress(v === 'address'); }}
+            sx={{ alignSelf: 'center', flexShrink: 0 }}
+          >
+            <ToggleButton value="name" sx={{ fontSize: '0.68rem', py: '5px', px: 1.25, color: c.textSecondary, '&.Mui-selected': { color: c.textPrimary, bgcolor: c.borderLight } }}>
+              Name
+            </ToggleButton>
+            <ToggleButton value="address" sx={{ fontSize: '0.68rem', py: '5px', px: 1.25, color: c.textSecondary, '&.Mui-selected': { color: c.textPrimary, bgcolor: c.borderLight } }}>
+              Address
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      </Box>
 
-      {loading ? (
-        <CircularProgress size={18} sx={{ color: c.accent, mb: 1.5 }} />
-      ) : (
-        <>
-          {items.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1.5 }}>
-              {items.map(item => (
-                <Chip
-                  key={item}
-                  label={item}
-                  size="small"
-                  onDelete={() => handleRemove(item)}
-                  sx={{
-                    fontSize: isAddress ? '0.6rem' : '0.72rem',
-                    fontFamily: isAddress ? 'monospace' : undefined,
-                    fontWeight: tokens.typography.weightMedium,
-                    bgcolor: c.borderLight,
-                    color: c.textPrimary,
-                    '& .MuiChip-deleteIcon': {
-                      color: c.textSecondary,
-                      '&:hover': { color: c.error },
-                    },
-                  }}
-                />
-              ))}
-            </Box>
-          )}
+      {/* What to block */}
+      <Box>
+        <Typography sx={labelSx}>Block from</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={blockContent}
+                onChange={e => setBlockContent(e.target.checked)}
+                size="small"
+                sx={{ color: c.textSecondary, '&.Mui-checked': { color: c.error } }}
+              />
+            }
+            label={<Typography sx={{ fontSize: '0.82rem', color: c.textPrimary }}>Their content</Typography>}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={blockChat}
+                onChange={e => setBlockChat(e.target.checked)}
+                size="small"
+                sx={{ color: c.textSecondary, '&.Mui-checked': { color: c.error } }}
+              />
+            }
+            label={<Typography sx={{ fontSize: '0.82rem', color: c.textPrimary }}>Their chat messages</Typography>}
+          />
+        </Box>
+      </Box>
 
-          {items.length === 0 && (
-            <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mb: 1.5, fontStyle: 'italic' }}>
-              None
+      {isDup && <Typography sx={{ fontSize: '0.72rem', color: c.error }}>Already blocked with those settings.</Typography>}
+      {nothingSelected && <Typography sx={{ fontSize: '0.72rem', color: c.error }}>Select at least one thing to block.</Typography>}
+      {error && <Typography sx={{ fontSize: '0.75rem', color: c.error }}>{error}</Typography>}
+
+      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+        <Button
+          size="small"
+          onClick={onBack}
+          startIcon={<ArrowBackIcon sx={{ fontSize: '0.85rem' }} />}
+          sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+        >
+          Back
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          disableElevation
+          onClick={handleAdd}
+          disabled={!canAdd}
+          sx={{
+            bgcolor: c.error, color: '#fff', borderRadius: '50px', fontSize: '0.75rem',
+            '&:hover': { filter: 'brightness(0.9)' },
+            '&.Mui-disabled': { opacity: 0.35, bgcolor: c.error, color: '#fff' },
+          }}
+        >
+          {adding ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Block'}
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Wizard panel ─────────────────────────────────────────────────────────────
+
+type WizardStep = 'closed' | 'choice' | 'person' | 'content';
+
+function WizardPanel({
+  mode,
+  followedNames,
+  existingPatterns,
+  blockedNames,
+  blockedAddresses,
+  blockedChatNames,
+  blockedChatAddresses,
+  onFollowPerson,
+  onFollowPattern,
+  onBlockPerson,
+  onBlockPattern,
+}: {
+  mode: 'follow' | 'block';
+  followedNames: string[];
+  existingPatterns: string[];
+  blockedNames: string[];
+  blockedAddresses: string[];
+  blockedChatNames: string[];
+  blockedChatAddresses: string[];
+  onFollowPerson: (name: string) => Promise<void>;
+  onFollowPattern: (pattern: string) => Promise<void>;
+  onBlockPerson: (value: string, isAddress: boolean, content: boolean, chat: boolean) => Promise<void>;
+  onBlockPattern: (pattern: string) => Promise<void>;
+}) {
+  const c = useColors();
+  const [step, setStep] = useState<WizardStep>('closed');
+  const accent = mode === 'block' ? c.error : c.accent;
+
+  if (step === 'closed') {
+    return (
+      <Button
+        size="small"
+        startIcon={<AddIcon sx={{ fontSize: '0.9rem' }} />}
+        onClick={() => setStep('choice')}
+        sx={{
+          color: accent, borderRadius: '50px', fontSize: '0.78rem',
+          border: `1.5px solid ${accent}40`,
+          px: 1.5, py: 0.4,
+          '&:hover': { bgcolor: `${accent}0d`, borderColor: accent },
+          transition: '0.12s ease',
+        }}
+      >
+        {mode === 'follow' ? 'Follow something' : 'Block something'}
+      </Button>
+    );
+  }
+
+  return (
+    <Box sx={{
+      p: 2, mb: 0.5,
+      bgcolor: c.surface,
+      border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+      borderRadius: `${tokens.shape.radius}px`,
+    }}>
+      {step === 'choice' && (
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
+              What would you like to {mode}?
             </Typography>
-          )}
-
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <TextField
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-              placeholder={isAddress ? 'Q...' : 'Name'}
-              size="small"
-              sx={{
-                flex: 1,
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: c.surface,
-                  '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
-                  '&:hover fieldset': { borderColor: c.accent },
-                  '&.Mui-focused fieldset': { borderColor: c.accent },
-                },
-                '& input': {
-                  color: c.textPrimary,
-                  fontSize: '0.8rem',
-                  fontFamily: isAddress ? 'monospace' : undefined,
-                },
-              }}
-            />
+            <IconButton size="small" onClick={() => setStep('closed')} sx={{ color: c.textSecondary, '&:hover': { color: c.textPrimary } }}>
+              <CloseIcon sx={{ fontSize: '0.9rem' }} />
+            </IconButton>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
             <Button
-              onClick={handleAdd}
-              disabled={!input.trim() || adding}
-              variant="contained"
-              disableElevation
+              variant="outlined"
+              onClick={() => setStep('person')}
+              startIcon={<PersonIcon />}
               sx={{
-                bgcolor: c.accent,
-                color: c.accentText,
-                borderRadius: '50px',
-                '&:hover': { bgcolor: c.accentHover },
-                opacity: !input.trim() || adding ? 0.35 : 1,
-                minWidth: 'auto',
-                px: 2.5,
-                fontSize: '0.75rem',
+                borderColor: c.borderLight, color: c.textPrimary,
+                borderRadius: `${tokens.shape.radius}px`, fontSize: '0.82rem',
+                flex: 1, justifyContent: 'flex-start', px: 2, py: 1.25,
+                '&:hover': { borderColor: accent, bgcolor: `${accent}08` },
               }}
             >
-              {adding ? <CircularProgress size={14} sx={{ color: c.accentText }} /> : 'Add'}
+              <Box sx={{ textAlign: 'left' }}>
+                <Box sx={{ fontWeight: tokens.typography.weightBold }}>A person</Box>
+                <Box sx={{ fontSize: '0.68rem', color: c.textSecondary, fontWeight: 400 }}>
+                  {mode === 'follow' ? 'By name - proactively cache their content' : 'By name or address - blocks content and/or chat'}
+                </Box>
+              </Box>
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => setStep('content')}
+              startIcon={mode === 'follow' ? <StarBorderIcon /> : <BlockIcon />}
+              sx={{
+                borderColor: c.borderLight, color: c.textPrimary,
+                borderRadius: `${tokens.shape.radius}px`, fontSize: '0.82rem',
+                flex: 1, justifyContent: 'flex-start', px: 2, py: 1.25,
+                '&:hover': { borderColor: accent, bgcolor: `${accent}08` },
+              }}
+            >
+              <Box sx={{ textAlign: 'left' }}>
+                <Box sx={{ fontWeight: tokens.typography.weightBold }}>Content pattern</Box>
+                <Box sx={{ fontSize: '0.68rem', color: c.textSecondary, fontWeight: 400 }}>
+                  {mode === 'follow' ? 'By type, creator, or specific file' : 'By service type, creator pattern, or specific file'}
+                </Box>
+              </Box>
             </Button>
           </Box>
+        </Box>
+      )}
 
-          {error && (
-            <Typography sx={{ fontSize: '0.72rem', color: c.error, mt: 0.75 }}>
-              {error}
-            </Typography>
-          )}
+      {step === 'person' && mode === 'follow' && (
+        <PersonFollowWizard
+          existing={followedNames}
+          onAdd={async name => { await onFollowPerson(name); setStep('closed'); }}
+          onBack={() => setStep('choice')}
+        />
+      )}
+
+      {step === 'person' && mode === 'block' && (
+        <PersonBlockWizard
+          existingNames={blockedNames}
+          existingAddresses={blockedAddresses}
+          existingChatNames={blockedChatNames}
+          existingChatAddresses={blockedChatAddresses}
+          onAdd={async (v, isAddr, content, chat) => { await onBlockPerson(v, isAddr, content, chat); setStep('closed'); }}
+          onBack={() => setStep('choice')}
+        />
+      )}
+
+      {step === 'content' && (
+        <ContentPatternWizard
+          mode={mode}
+          existing={existingPatterns}
+          onAdd={async pattern => {
+            if (mode === 'follow') await onFollowPattern(pattern);
+            else await onBlockPattern(pattern);
+            setStep('closed');
+          }}
+          onBack={() => setStep('choice')}
+        />
+      )}
+    </Box>
+  );
+}
+
+// ─── Follow tab ───────────────────────────────────────────────────────────────
+
+function FollowTab({
+  followed,
+  follow,
+  unfollow,
+}: {
+  followed: string[];
+  follow: (p: string) => Promise<void>;
+  unfollow: (p: string) => Promise<void>;
+}) {
+  const c = useColors();
+  const [followedNames, setFollowedNames] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getList('followedNames').then(r => { setFollowedNames(r); setLoading(false); });
+  }, []);
+
+  async function handleFollowPerson(name: string) {
+    await addToList('followedNames', [name]);
+    setFollowedNames(prev => [...prev, name]);
+  }
+
+  async function handleUnfollowPerson(name: string) {
+    await removeFromList('followedNames', [name]);
+    setFollowedNames(prev => prev.filter(n => n !== name));
+  }
+
+  const totalCount = followedNames.length + followed.length;
+  const isEmpty = !loading && totalCount === 0;
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <WizardPanel
+        mode="follow"
+        followedNames={followedNames}
+        existingPatterns={followed}
+        blockedNames={[]} blockedAddresses={[]} blockedChatNames={[]} blockedChatAddresses={[]}
+        onFollowPerson={handleFollowPerson}
+        onFollowPattern={follow}
+        onBlockPerson={async () => {}}
+        onBlockPattern={async () => {}}
+      />
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+          <CircularProgress size={20} sx={{ color: c.accent }} />
+        </Box>
+      ) : isEmpty ? (
+        <Box sx={{ py: 4, textAlign: 'center' }}>
+          <StarBorderIcon sx={{ fontSize: '2rem', color: c.textSecondary, opacity: 0.3, mb: 1 }} />
+          <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
+            Nothing followed yet.
+          </Typography>
+          <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary, mt: 0.5 }}>
+            Follow creators or content patterns to have your node cache them proactively.
+          </Typography>
+        </Box>
+      ) : (
+        <>
+          {followedNames.map(name => (
+            <PersonFollowItem
+              key={name}
+              name={name}
+              onRemove={() => handleUnfollowPerson(name)}
+            />
+          ))}
+          {followed.map(pattern => (
+            <PatternItem
+              key={pattern}
+              pattern={pattern}
+              onRemove={() => unfollow(pattern)}
+            />
+          ))}
         </>
       )}
     </Box>
   );
 }
 
-// ─── Divider ───────────────────────────────────────────────────────────────────
+// ─── Block tab ────────────────────────────────────────────────────────────────
 
-function Divider() {
-  const c = useColors();
-  return <Box sx={{ borderTop: `${tokens.shape.borderWidth} solid ${c.borderLight}`, my: 4 }} />;
+function mergePersonBlocks(
+  names: string[],
+  addresses: string[],
+  chatNames: string[],
+  chatAddresses: string[],
+): PersonBlockEntry[] {
+  const map = new Map<string, PersonBlockEntry>();
+  for (const n of names) {
+    map.set(n, { value: n, isAddress: false, blockedContent: true, blockedChat: false });
+  }
+  for (const n of chatNames) {
+    const e = map.get(n);
+    if (e) e.blockedChat = true;
+    else map.set(n, { value: n, isAddress: false, blockedContent: false, blockedChat: true });
+  }
+  for (const a of addresses) {
+    map.set(a, { value: a, isAddress: true, blockedContent: true, blockedChat: false });
+  }
+  for (const a of chatAddresses) {
+    const e = map.get(a);
+    if (e) e.blockedChat = true;
+    else map.set(a, { value: a, isAddress: true, blockedContent: false, blockedChat: true });
+  }
+  return Array.from(map.values());
 }
 
-// ─── Section label (for grouping) ─────────────────────────────────────────────
-
-function SectionGroup({ label }: { label: string }) {
+function BlockTab({
+  blocked,
+  block,
+  unblock,
+}: {
+  blocked: string[];
+  block: (p: string) => Promise<void>;
+  unblock: (p: string) => Promise<void>;
+}) {
   const c = useColors();
+  const [blockedNames,        setBlockedNames]        = useState<string[]>([]);
+  const [blockedAddresses,    setBlockedAddresses]    = useState<string[]>([]);
+  const [blockedChatNames,    setBlockedChatNames]    = useState<string[]>([]);
+  const [blockedChatAddresses,setBlockedChatAddresses]= useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      getList('blockedNames'),
+      getList('blockedAddresses'),
+      getList('blockedChatNames'),
+      getList('blockedChatAddresses'),
+    ]).then(([bn, ba, bcn, bca]) => {
+      setBlockedNames(bn);
+      setBlockedAddresses(ba);
+      setBlockedChatNames(bcn);
+      setBlockedChatAddresses(bca);
+      setLoading(false);
+    });
+  }, []);
+
+  const personBlocks = useMemo(
+    () => mergePersonBlocks(blockedNames, blockedAddresses, blockedChatNames, blockedChatAddresses),
+    [blockedNames, blockedAddresses, blockedChatNames, blockedChatAddresses],
+  );
+
+  async function handleBlockPerson(value: string, isAddress: boolean, content: boolean, chat: boolean) {
+    const adds: Promise<boolean>[] = [];
+    if (content) adds.push(addToList(isAddress ? 'blockedAddresses' : 'blockedNames', [value]));
+    if (chat)    adds.push(addToList(isAddress ? 'blockedChatAddresses' : 'blockedChatNames', [value]));
+    await Promise.all(adds);
+    if (content) {
+      if (isAddress) setBlockedAddresses(prev => [...prev, value]);
+      else           setBlockedNames(prev => [...prev, value]);
+    }
+    if (chat) {
+      if (isAddress) setBlockedChatAddresses(prev => [...prev, value]);
+      else           setBlockedChatNames(prev => [...prev, value]);
+    }
+  }
+
+  async function handleRemoveBadge(entry: PersonBlockEntry, which: 'content' | 'chat' | 'all') {
+    const removes: Promise<boolean>[] = [];
+    const removeContent = which === 'content' || which === 'all';
+    const removeChat    = which === 'chat'    || which === 'all';
+
+    if (removeContent && entry.blockedContent) {
+      removes.push(removeFromList(entry.isAddress ? 'blockedAddresses' : 'blockedNames', [entry.value]));
+    }
+    if (removeChat && entry.blockedChat) {
+      removes.push(removeFromList(entry.isAddress ? 'blockedChatAddresses' : 'blockedChatNames', [entry.value]));
+    }
+    await Promise.all(removes);
+
+    if (removeContent && entry.blockedContent) {
+      if (entry.isAddress) setBlockedAddresses(prev => prev.filter(v => v !== entry.value));
+      else                 setBlockedNames(prev => prev.filter(v => v !== entry.value));
+    }
+    if (removeChat && entry.blockedChat) {
+      if (entry.isAddress) setBlockedChatAddresses(prev => prev.filter(v => v !== entry.value));
+      else                 setBlockedChatNames(prev => prev.filter(v => v !== entry.value));
+    }
+  }
+
+  const totalCount = personBlocks.length + blocked.length;
+  const isEmpty = !loading && totalCount === 0;
+
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-      <Typography sx={{
-        fontSize: '0.6rem', fontWeight: tokens.typography.weightBold,
-        letterSpacing: '0.12em', textTransform: 'uppercase',
-        color: c.textSecondary, whiteSpace: 'nowrap',
-      }}>
-        {label}
-      </Typography>
-      <Box sx={{ flex: 1, borderTop: `${tokens.shape.borderWidth} solid ${c.borderLight}` }} />
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <WizardPanel
+        mode="block"
+        followedNames={[]}
+        existingPatterns={blocked}
+        blockedNames={blockedNames}
+        blockedAddresses={blockedAddresses}
+        blockedChatNames={blockedChatNames}
+        blockedChatAddresses={blockedChatAddresses}
+        onFollowPerson={async () => {}}
+        onFollowPattern={async () => {}}
+        onBlockPerson={handleBlockPerson}
+        onBlockPattern={block}
+      />
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+          <CircularProgress size={20} sx={{ color: c.accent }} />
+        </Box>
+      ) : isEmpty ? (
+        <Box sx={{ py: 4, textAlign: 'center' }}>
+          <BlockIcon sx={{ fontSize: '2rem', color: c.textSecondary, opacity: 0.3, mb: 1 }} />
+          <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
+            Nothing blocked.
+          </Typography>
+          <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary, mt: 0.5 }}>
+            Block people or content patterns to filter them from search results and notifications.
+          </Typography>
+        </Box>
+      ) : (
+        <>
+          {personBlocks.map(entry => (
+            <PersonBlockItem
+              key={entry.value}
+              entry={entry}
+              onRemoveBadge={which => handleRemoveBadge(entry, which)}
+            />
+          ))}
+          {blocked.map(pattern => (
+            <PatternItem
+              key={pattern}
+              pattern={pattern}
+              onRemove={() => unblock(pattern)}
+              accentColor={c.error}
+            />
+          ))}
+        </>
+      )}
     </Box>
   );
 }
@@ -567,6 +1072,7 @@ function SectionGroup({ label }: { label: string }) {
 export function ListsPage() {
   const c = useColors();
   const { blocked, followed, block, unblock, follow, unfollow } = useQdnLists();
+  const [tab, setTab] = useState(0);
 
   return (
     <Box sx={{
@@ -580,79 +1086,61 @@ export function ListsPage() {
       }}>
         Lists
       </Typography>
-      <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mb: 4 }}>
-        Control which QDN content your node follows or filters out.
+      <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mb: 3 }}>
+        Control which content your node follows and what gets filtered out.
       </Typography>
 
-      {/* ── QDN Patterns ───────────────────────────────────────────────────── */}
-      <SectionGroup label="QDN Patterns" />
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{
+          mb: 3,
+          '& .MuiTabs-indicator': { bgcolor: c.accent },
+          '& .MuiTab-root': { fontSize: '0.82rem', fontWeight: tokens.typography.weightBold, color: c.textSecondary, textTransform: 'none', minHeight: 40, px: 2 },
+          '& .Mui-selected': { color: c.accent },
+          borderBottom: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+        }}
+      >
+        <Tab
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              Following
+              {followed.length > 0 && (
+                <Box sx={{ fontSize: '0.6rem', fontWeight: tokens.typography.weightBold, bgcolor: tab === 0 ? c.accent : c.borderLight, color: tab === 0 ? '#fff' : c.textSecondary, px: 0.75, py: 0.1, borderRadius: '50px' }}>
+                  {followed.length}
+                </Box>
+              )}
+            </Box>
+          }
+        />
+        <Tab
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              Blocking
+              {blocked.length > 0 && (
+                <Box sx={{ fontSize: '0.6rem', fontWeight: tokens.typography.weightBold, bgcolor: tab === 1 ? c.error : c.borderLight, color: tab === 1 ? '#fff' : c.textSecondary, px: 0.75, py: 0.1, borderRadius: '50px' }}>
+                  {blocked.length}
+                </Box>
+              )}
+            </Box>
+          }
+        />
+      </Tabs>
 
-      <QdnListSection
-        title="Followed QDN"
-        description="Your node proactively fetches and caches content matching these patterns. Use glob wildcards to follow broad categories — e.g. a whole service type, or everything from a specific name."
-        icon={<StarIcon sx={{ fontSize: '1.1rem' }} />}
-        items={followed}
-        onAdd={follow}
-        onRemove={unfollow}
-      />
-
-      <Divider />
-
-      <QdnListSection
-        title="Blocked QDN"
-        description="Content matching these patterns is hidden from QDN search results and suppressed in notifications. Blocking a pattern also removes it from your followed list."
-        icon={<BlockIcon sx={{ fontSize: '1.1rem' }} />}
-        items={blocked}
-        onAdd={block}
-        onRemove={unblock}
-        accentOverride={c.error}
-      />
-
-      {/* ── Name & Address Lists ───────────────────────────────────────────── */}
-      <Divider />
-      <SectionGroup label="Name & Address Lists" />
-
-      <SimpleListSection
-        title="Followed Names"
-        description="Your node proactively fetches and caches all content from these names. Storage budget is divided across followed names."
-        listName="followedNames"
-      />
-
-      <Divider />
-
-      <SimpleListSection
-        title="Blocked Names"
-        description="Content from these names is filtered out of QDN search results and suppressed in notifications."
-        listName="blockedNames"
-      />
-
-      <Divider />
-
-      <SimpleListSection
-        title="Blocked Addresses"
-        description="Addresses whose content is excluded at the node level."
-        listName="blockedAddresses"
-        isAddress
-      />
-
-      {/* ── Chat Lists ─────────────────────────────────────────────────────── */}
-      <Divider />
-      <SectionGroup label="Chat" />
-
-      <SimpleListSection
-        title="Blocked Chat Names"
-        description="Messages from these names are hidden in all chat channels."
-        listName="blockedChatNames"
-      />
-
-      <Divider />
-
-      <SimpleListSection
-        title="Blocked Chat Addresses"
-        description="Messages from these addresses are hidden in all chat channels."
-        listName="blockedChatAddresses"
-        isAddress
-      />
+      {tab === 0 && (
+        <FollowTab
+          followed={followed}
+          follow={follow}
+          unfollow={unfollow}
+        />
+      )}
+      {tab === 1 && (
+        <BlockTab
+          blocked={blocked}
+          block={block}
+          unblock={unblock}
+        />
+      )}
     </Box>
   );
 }

@@ -32,3 +32,14 @@ export const accountAtom = atom<{ address: string; name: string | null } | null>
 export const blockedQdnAtom      = atom<string[]>([]);
 export const followedQdnAtom     = atom<string[]>([]);
 export const qdnListsLoadedAtom  = atom<boolean>(false);
+
+// Publish dialog draft - lives outside the component so a half-filled form
+// survives closing the dialog or navigating between pages (in-memory only,
+// cleared on app reload since File objects cannot be persisted)
+export const publishServiceAtom      = atom<string>('ARBITRARY_DATA');
+export const publishFileAtom         = atom<File | null>(null);
+export const publishIdentifierAtom   = atom<string>('');
+export const publishTitleAtom        = atom<string>('');
+export const publishDescriptionAtom  = atom<string>('');
+export const publishTagsInputAtom    = atom<string>('');
+export const publishMultiFileZipAtom = atom<boolean>(false);
