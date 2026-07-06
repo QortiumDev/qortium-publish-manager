@@ -18,6 +18,7 @@ import {
   publishMultiFileZipAtom,
 } from '../state/atoms';
 import { publishResource, publishAvatar, publishAvatarFromQDN, getNamesByAddress, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
+import { zipContainsRootIndex } from '../lib/zipInspect';
 import { SERVICE_TYPES } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -227,6 +228,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [publishing, setPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [missingIndex, setMissingIndex] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -260,6 +262,15 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account?.address]);
 
+  const isWebsiteZip = service === 'WEBSITE' && !!file?.name.toLowerCase().endsWith('.zip');
+
+  useEffect(() => {
+    if (!isWebsiteZip || !file) { setMissingIndex(false); return; }
+    let cancelled = false;
+    zipContainsRootIndex(file).then(ok => { if (!cancelled) setMissingIndex(!ok); });
+    return () => { cancelled = true; };
+  }, [file, isWebsiteZip]);
+
   const selectedService = SERVICE_TYPES.find(s => s.value === service);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
@@ -292,7 +303,12 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
       });
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Publish failed.');
+      const raw = err instanceof Error ? err.message : String(err);
+      setError(
+        raw.includes('MISSING_INDEX_FILE')
+          ? 'Validation failed: no index.html found at the ZIP root. WEBSITE publishing requires index.html directly at the top level of the ZIP - not inside a subfolder. Re-zip your site from inside the folder that contains index.html.'
+          : raw || 'Publish failed.',
+      );
     } finally {
       setPublishing(false);
     }
@@ -453,6 +469,17 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           <Typography sx={{ fontSize: '0.78rem', color: c.textSecondary, mt: -1 }}>
             This file is larger than 5 MiB - Qortium Home will ask you to select it again via a system dialog when you click Publish.
           </Typography>
+        )}
+
+        {missingIndex && (
+          <Box sx={{ bgcolor: `${c.error}18`, border: `1px solid ${c.error}55`, borderRadius: `${tokens.shape.radius}px`, px: 2, py: 1.5, mt: -1 }}>
+            <Typography sx={{ fontSize: '0.78rem', color: c.error, fontWeight: tokens.typography.weightBold, mb: 0.5 }}>
+              No index.html found at the ZIP root
+            </Typography>
+            <Typography sx={{ fontSize: '0.75rem', color: c.error }}>
+              WEBSITE publishing requires index.html directly at the top level of the ZIP - not inside a subfolder. If your files are nested inside a folder (e.g. <code style={{ fontFamily: 'monospace' }}>mysite/index.html</code>), open that folder and re-zip its contents from inside.
+            </Typography>
+          </Box>
         )}
 
         {file?.name.toLowerCase().endsWith('.zip') && (
