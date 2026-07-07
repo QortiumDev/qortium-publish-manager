@@ -65,6 +65,29 @@ export async function publishResource(opts: {
   });
 }
 
+export async function publishResourceBase64(opts: {
+  service: string;
+  name: string;
+  data64: string;
+  filename?: string;
+  identifier: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
+}): Promise<void> {
+  await qdnRequest({
+    action: 'PUBLISH_QDN_RESOURCE',
+    service: opts.service,
+    name: opts.name,
+    identifier: opts.identifier,
+    data64: opts.data64,
+    ...(opts.filename    ? { filename: opts.filename }       : {}),
+    ...(opts.title       ? { title: opts.title }             : {}),
+    ...(opts.description ? { description: opts.description } : {}),
+    ...(opts.tags?.length ? { tags: opts.tags }              : {}),
+  });
+}
+
 export async function deleteResource(service: string, name: string, identifier: string): Promise<void> {
   await qdnRequest({
     action: 'DELETE_QDN_RESOURCE',

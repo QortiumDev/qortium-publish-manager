@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, CircularProgress, IconButton,
   Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, Chip,
+  Button, Chip, TextField, MenuItem,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import LinkIcon from '@mui/icons-material/Link';
@@ -13,9 +14,10 @@ import { useAtomValue } from 'jotai';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
-import { listResources, deleteResource, ensureAccountUnlocked } from '../api/qortal';
+import { listResources, deleteResource, ensureAccountUnlocked, getNamesByAddress } from '../api/qortal';
 import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
 import { PublishDialog } from './PublishPage';
+import { EditDialog } from './EditDialog';
 import type { QdnResource } from '../types';
 
 async function copyText(text: string): Promise<boolean> {
@@ -54,11 +56,13 @@ function UploadRow({
   r,
   last,
   onView,
+  onEdit,
   onDelete,
 }: {
   r: QdnResource;
   last: boolean;
   onView: () => void;
+  onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
 }) {
   const c = useColors();
@@ -135,6 +139,22 @@ function UploadRow({
         </IconButton>
       </Tooltip>
 
+      <Tooltip title="Edit">
+        <IconButton
+          size="small"
+          onClick={onEdit}
+          sx={{
+            borderRadius: `${tokens.shape.radius}px`,
+            color: c.textSecondary,
+            '&:hover': { color: c.accent, bgcolor: c.borderLight },
+            transition: '0.12s ease',
+            flexShrink: 0,
+          }}
+        >
+          <EditIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+
       <Tooltip title="Delete">
         <IconButton
           size="small"
@@ -161,10 +181,13 @@ export function MyUploadsPage() {
   const [resources, setResources] = useState<QdnResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [serviceFilter, setServiceFilter] = useState('ALL');
+  const [editTarget, setEditTarget] = useState<QdnResource | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QdnResource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewTarget, setViewTarget] = useState<QdnResource | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [ownedNames, setOwnedNames] = useState<string[]>([]);
+  const [selectedName, setSelectedName] = useState('');
 
   const load = useCallback(async (name: string) => {
     setLoading(true);
@@ -174,8 +197,16 @@ export function MyUploadsPage() {
   }, []);
 
   useEffect(() => {
-    if (account?.name) load(account.name);
-  }, [account, load]);
+    if (!account?.address) return;
+    getNamesByAddress(account.address).then(names => {
+      setOwnedNames(names);
+      setSelectedName(prev => (names.length > 0 && !names.includes(prev)) ? names[0] : prev);
+    });
+  }, [account?.address]);
+
+  useEffect(() => {
+    if (selectedName) load(selectedName);
+  }, [selectedName, load]);
 
   const serviceTypes = ['ALL', ...Array.from(new Set(resources.map(r => r.service))).sort()];
 
@@ -224,15 +255,36 @@ export function MyUploadsPage() {
           <Typography sx={{ fontWeight: tokens.typography.weightBlack, fontSize: '1.5rem', letterSpacing: '-0.02em', color: c.textPrimary, lineHeight: 1 }}>
             My Publishes
           </Typography>
-          <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mt: 0.5 }}>
-            {account.name}
-          </Typography>
+          <TextField
+            select
+            value={selectedName}
+            onChange={e => { setSelectedName(e.target.value); setServiceFilter('ALL'); }}
+            size="small"
+            disabled={ownedNames.length <= 1}
+            slotProps={{
+              htmlInput: { sx: { fontSize: '0.75rem', color: c.textSecondary, py: '2px', pl: ownedNames.length > 1 ? undefined : 0 } },
+            }}
+            sx={{
+              mt: 0.5,
+              '& .MuiOutlinedInput-root': {
+                bgcolor: 'transparent',
+                '& fieldset': { borderColor: ownedNames.length > 1 ? c.borderLight : 'transparent', borderWidth: tokens.shape.borderWidth },
+                '&:hover fieldset': { borderColor: ownedNames.length > 1 ? c.accent : 'transparent' },
+                '&.Mui-focused fieldset': { borderColor: c.accent },
+              },
+              '& .MuiSelect-icon': { display: ownedNames.length > 1 ? undefined : 'none' },
+            }}
+          >
+            {ownedNames.map(n => (
+              <MenuItem key={n} value={n} sx={{ fontSize: '0.8rem' }}>{n}</MenuItem>
+            ))}
+          </TextField>
         </Box>
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Refresh">
           <IconButton
-            onClick={() => load(account.name!)}
-            disabled={loading}
+            onClick={() => load(selectedName)}
+            disabled={loading || !selectedName}
             sx={{ borderRadius: `${tokens.shape.radius}px`, color: c.textSecondary, '&:hover': { color: c.accent, bgcolor: c.borderLight } }}
           >
             <RefreshIcon fontSize="small" />
@@ -298,6 +350,7 @@ export function MyUploadsPage() {
               r={r}
               last={i === filtered.length - 1}
               onView={() => setViewTarget(r)}
+              onEdit={e => { e.stopPropagation(); setEditTarget(r); }}
               onDelete={e => { e.stopPropagation(); setDeleteTarget(r); }}
             />
           ))
@@ -313,6 +366,13 @@ export function MyUploadsPage() {
       {viewTarget && (
         <ResourceViewerDialog resource={viewTarget} onClose={() => setViewTarget(null)} />
       )}
+
+      <EditDialog
+        open={!!editTarget}
+        resource={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSuccess={() => load(selectedName)}
+      />
 
       <PublishDialog open={publishOpen} onClose={() => setPublishOpen(false)} />
 
