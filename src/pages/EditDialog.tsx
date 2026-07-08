@@ -9,9 +9,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
-import { publishResource, publishResourceBase64, ensureAccountUnlocked } from '../api/qortal';
+import { publishResource, publishResourceBase64, selectPublishSource, ensureAccountUnlocked } from '../api/qortal';
 import { zipContainsRootIndex } from '../lib/zipInspect';
-import type { QdnResource } from '../types';
+import type { PublishSource, QdnResource } from '../types';
 
 function parseTags(raw: string): string[] {
   return raw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
@@ -42,7 +42,7 @@ export function EditDialog({
   const c = useColors();
 
   const [mode, setMode] = useState<'file' | 'base64'>('file');
-  const [file, setFile] = useState<File | null>(null);
+  const [source, setSource] = useState<PublishSource | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [base64Input, setBase64Input] = useState('');
   const [title, setTitle] = useState('');
@@ -60,7 +60,7 @@ export function EditDialog({
     setTitle(resource.title ?? '');
     setDescription(resource.description ?? '');
     setTagsInput((resource.tags ?? []).join(', '));
-    setFile(null);
+    setSource(null);
     setBase64Input('');
     setMode('file');
     setSuccess(false);
@@ -69,21 +69,34 @@ export function EditDialog({
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [open, resource]);
 
-  const isWebsiteZip = resource?.service === 'WEBSITE' && !!file?.name.toLowerCase().endsWith('.zip');
+  const sourceFile = source?.kind === 'file' ? source.file : null;
+  const sourceName = source?.kind === 'token' ? source.fileName : sourceFile?.name ?? null;
+  const sourceSize = source?.kind === 'token' ? source.size : sourceFile?.size ?? null;
+
+  const isWebsiteZip = resource?.service === 'WEBSITE' && !!sourceName?.toLowerCase().endsWith('.zip') && source?.kind === 'file';
 
   useEffect(() => {
-    if (!isWebsiteZip || !file) { setMissingIndex(false); return; }
+    if (!isWebsiteZip || !sourceFile) { setMissingIndex(false); return; }
     let cancelled = false;
-    zipContainsRootIndex(file).then(ok => { if (!cancelled) setMissingIndex(!ok); });
+    zipContainsRootIndex(sourceFile).then(ok => { if (!cancelled) setMissingIndex(!ok); });
     return () => { cancelled = true; };
-  }, [file, isWebsiteZip]);
+  }, [sourceFile, isWebsiteZip]);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
     const dropped = e.dataTransfer.files[0];
-    if (dropped) setFile(dropped);
+    if (dropped) setSource({ kind: 'file', file: dropped });
   }, []);
+
+  async function handlePickFile() {
+    try {
+      const result = await selectPublishSource();
+      if (result) setSource(result);
+    } catch {
+      fileInputRef.current?.click();
+    }
+  }
 
   async function handleSave() {
     if (!resource) return;
@@ -100,8 +113,8 @@ export function EditDialog({
       };
 
       if (mode === 'file') {
-        if (!file) return;
-        await publishResource({ service: resource.service, name: resource.name, file, identifier: resource.identifier, ...meta });
+        if (!source) return;
+        await publishResource({ service: resource.service, name: resource.name, source, identifier: resource.identifier, ...meta });
       } else {
         const raw = stripDataUrlPrefix(base64Input.trim().replace(/\s/g, ''));
         if (!raw) return;
@@ -118,7 +131,7 @@ export function EditDialog({
   }
 
   const canSave = !publishing && (
-    mode === 'file' ? !!file && !missingIndex : base64Input.trim().length > 0
+    mode === 'file' ? !!source && !missingIndex : base64Input.trim().length > 0
   );
 
   const tags = parseTags(tagsInput);
@@ -184,7 +197,7 @@ export function EditDialog({
         {mode === 'file' ? (
           <>
             <Box
-              onClick={() => fileInputRef.current?.click()}
+              onClick={handlePickFile}
               onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleFileDrop}
@@ -198,27 +211,30 @@ export function EditDialog({
                 '&:hover': { borderColor: c.accent, bgcolor: `${c.accent}08` },
               }}
             >
-              <CloudUploadIcon sx={{ fontSize: '2rem', color: file ? c.accent : c.textSecondary }} />
-              {file ? (
+              <CloudUploadIcon sx={{ fontSize: '2rem', color: source ? c.accent : c.textSecondary }} />
+              {sourceName ? (
                 <>
                   <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
-                    {file.name}
+                    {sourceName}
                   </Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary }}>
-                    {formatBytes(file.size)}
-                  </Typography>
+                  {sourceSize !== null && (
+                    <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary }}>
+                      {formatBytes(sourceSize)}
+                    </Typography>
+                  )}
                 </>
               ) : (
                 <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
-                  Drop replacement file here or click to browse
+                  Drop replacement file here or click to choose
                 </Typography>
               )}
-              <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setFile(f); }} />
+              {/* Fallback for hosts that don't support SELECT_QDN_PUBLISH_SOURCE */}
+              <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setSource({ kind: 'file', file: f }); }} />
             </Box>
 
-            {file && file.size > 5 * 1024 * 1024 && (
+            {source?.kind === 'file' && sourceSize !== null && sourceSize > 5 * 1024 * 1024 && (
               <Typography sx={{ fontSize: '0.78rem', color: c.textSecondary, mt: -1 }}>
-                This file is larger than 5 MiB - Qortium Home will ask you to select it again via a system dialog when you click Save.
+                This file is larger than 5 MiB - the upload may fail on this path. Click the zone again to use the system file picker instead.
               </Typography>
             )}
 

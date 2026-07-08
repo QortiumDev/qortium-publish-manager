@@ -13,11 +13,11 @@ import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import {
   accountAtom,
-  publishServiceAtom, publishFileAtom, publishIdentifierAtom,
+  publishServiceAtom, publishSourceAtom, publishIdentifierAtom,
   publishTitleAtom, publishDescriptionAtom, publishTagsInputAtom,
   publishMultiFileZipAtom,
 } from '../state/atoms';
-import { publishResource, publishAvatar, publishAvatarFromQDN, getNamesByAddress, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
+import { publishResource, publishAvatar, publishAvatarFromQDN, selectPublishSource, getNamesByAddress, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
 import { zipContainsRootIndex } from '../lib/zipInspect';
 import { SERVICE_TYPES } from '../types';
 
@@ -218,7 +218,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [service, setService] = useAtom(publishServiceAtom);
   const [selectedName, setSelectedName] = useState<string>('');
   const [ownedNames, setOwnedNames] = useState<string[]>([]);
-  const [file, setFile] = useAtom(publishFileAtom);
+  const [source, setSource] = useAtom(publishSourceAtom);
   const [isDragOver, setIsDragOver] = useState(false);
   const [identifier, setIdentifier] = useAtom(publishIdentifierAtom);
   const [title, setTitle] = useAtom(publishTitleAtom);
@@ -232,8 +232,12 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const sourceFile = source?.kind === 'file' ? source.file : null;
+  const sourceName = source?.kind === 'token' ? source.fileName : sourceFile?.name ?? null;
+  const sourceSize = source?.kind === 'token' ? source.size : sourceFile?.size ?? null;
+
   const handleReset = useCallback(() => {
-    setFile(null);
+    setSource(null);
     setIdentifier('');
     setTitle('');
     setDescription('');
@@ -242,7 +246,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     setSuccess(false);
     setError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [setFile, setIdentifier, setTitle, setDescription, setTagsInput, setIsMultiFileZip]);
+  }, [setSource, setIdentifier, setTitle, setDescription, setTagsInput, setIsMultiFileZip]);
 
   // Draft fields deliberately survive closing the dialog; only a completed
   // publish left on the success screen is cleared away on reopen.
@@ -262,14 +266,15 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account?.address]);
 
-  const isWebsiteZip = service === 'WEBSITE' && !!file?.name.toLowerCase().endsWith('.zip');
+  // Zip inspection only works for dropped files (we have the File bytes); token-based uploads skip it.
+  const isWebsiteZip = service === 'WEBSITE' && !!sourceName?.toLowerCase().endsWith('.zip') && source?.kind === 'file';
 
   useEffect(() => {
-    if (!isWebsiteZip || !file) { setMissingIndex(false); return; }
+    if (!isWebsiteZip || !sourceFile) { setMissingIndex(false); return; }
     let cancelled = false;
-    zipContainsRootIndex(file).then(ok => { if (!cancelled) setMissingIndex(!ok); });
+    zipContainsRootIndex(sourceFile).then(ok => { if (!cancelled) setMissingIndex(!ok); });
     return () => { cancelled = true; };
-  }, [file, isWebsiteZip]);
+  }, [sourceFile, isWebsiteZip]);
 
   const selectedService = SERVICE_TYPES.find(s => s.value === service);
 
@@ -277,16 +282,25 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     e.preventDefault();
     setIsDragOver(false);
     const dropped = e.dataTransfer.files[0];
-    if (dropped) setFile(dropped);
-  }, []);
+    if (dropped) setSource({ kind: 'file', file: dropped });
+  }, [setSource]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) setFile(f);
+    if (f) setSource({ kind: 'file', file: f });
   };
 
+  async function handlePickFile() {
+    try {
+      const result = await selectPublishSource();
+      if (result) setSource(result);
+    } catch {
+      fileInputRef.current?.click();
+    }
+  }
+
   async function handlePublish() {
-    if (!file) return;
+    if (!source) return;
     setPublishing(true);
     setError(null);
     try {
@@ -294,7 +308,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
       await publishResource({
         service,
         name: selectedName,
-        file,
+        source,
         identifier: identifier.trim() || 'default',
         title:       title.trim()       || undefined,
         description: description.trim() || undefined,
@@ -315,8 +329,8 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   const tags = parseTags(tagsInput);
-  const canPublish = !!file && !publishing && !!selectedName;
-  const hasDraft = !!file || !!identifier || !!title || !!description || !!tagsInput || isMultiFileZip;
+  const canPublish = !!source && !publishing && !!selectedName;
+  const hasDraft = !!source || !!identifier || !!title || !!description || !!tagsInput || isMultiFileZip;
 
   function renderContent() {
     if (!account) {
@@ -433,7 +447,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
         </TextField>
 
         <Box
-          onClick={() => fileInputRef.current?.click()}
+          onClick={handlePickFile}
           onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleFileDrop}
@@ -447,27 +461,30 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
             '&:hover': { borderColor: c.accent, bgcolor: `${c.accent}08` },
           }}
         >
-          <CloudUploadIcon sx={{ fontSize: '2rem', color: file ? c.accent : c.textSecondary }} />
-          {file ? (
+          <CloudUploadIcon sx={{ fontSize: '2rem', color: source ? c.accent : c.textSecondary }} />
+          {sourceName ? (
             <>
               <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
-                {file.name}
+                {sourceName}
               </Typography>
-              <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary }}>
-                {formatBytes(file.size)}
-              </Typography>
+              {sourceSize !== null && (
+                <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary }}>
+                  {formatBytes(sourceSize)}
+                </Typography>
+              )}
             </>
           ) : (
             <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
-              Drop a file here or click to browse
+              Drop a file here or click to choose
             </Typography>
           )}
+          {/* Fallback for hosts that don't support SELECT_QDN_PUBLISH_SOURCE */}
           <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} />
         </Box>
 
-        {file && file.size > 5 * 1024 * 1024 && (
+        {source?.kind === 'file' && sourceSize !== null && sourceSize > 5 * 1024 * 1024 && (
           <Typography sx={{ fontSize: '0.78rem', color: c.textSecondary, mt: -1 }}>
-            This file is larger than 5 MiB - Qortium Home will ask you to select it again via a system dialog when you click Publish.
+            This file is larger than 5 MiB - the upload may fail on this path. Click the zone again to use the system file picker instead.
           </Typography>
         )}
 
@@ -482,7 +499,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           </Box>
         )}
 
-        {file?.name.toLowerCase().endsWith('.zip') && (
+        {sourceName?.toLowerCase().endsWith('.zip') && (
           <FormControlLabel
             control={
               <Checkbox

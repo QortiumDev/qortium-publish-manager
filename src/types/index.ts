@@ -1,3 +1,7 @@
+export type PublishSource =
+  | { kind: 'token'; fileName: string; size: number; sourceToken: string }
+  | { kind: 'file'; file: File };
+
 export enum EnumTheme {
   DARK = 'dark',
   LIGHT = 'light',

@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import { EnumTheme } from '../types';
+import { EnumTheme, type PublishSource } from '../types';
 
 export type UiStyle = 'classic' | 'modern';
 
@@ -37,7 +37,7 @@ export const qdnListsLoadedAtom  = atom<boolean>(false);
 // survives closing the dialog or navigating between pages (in-memory only,
 // cleared on app reload since File objects cannot be persisted)
 export const publishServiceAtom      = atom<string>('ARBITRARY_DATA');
-export const publishFileAtom         = atom<File | null>(null);
+export const publishSourceAtom       = atom<PublishSource | null>(null);
 export const publishIdentifierAtom   = atom<string>('');
 export const publishTitleAtom        = atom<string>('');
 export const publishDescriptionAtom  = atom<string>('');

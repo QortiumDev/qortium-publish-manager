@@ -1,4 +1,4 @@
-import type { QdnResource } from '../types';
+import type { PublishSource, QdnResource } from '../types';
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,7 +29,14 @@ export async function listResources(name: string, service?: string, offset = 0, 
   } catch { return []; }
 }
 
-const QDN_INLINE_MAX_BYTES = 5 * 1024 * 1024;
+// Returns null if user canceled, throws if the action is not supported (caller should fall back to in-page picker).
+export async function selectPublishSource(): Promise<PublishSource | null> {
+  const res = await qdnRequest({ action: 'SELECT_QDN_PUBLISH_SOURCE', kind: 'file' }) as {
+    canceled?: boolean; fileName?: string; size?: number; sourceToken?: string;
+  };
+  if (res.canceled || !res.sourceToken) return null;
+  return { kind: 'token', fileName: res.fileName ?? '', size: res.size ?? 0, sourceToken: res.sourceToken };
+}
 
 export async function getNamesByAddress(address: string): Promise<string[]> {
   try {
@@ -43,22 +50,23 @@ export async function getNamesByAddress(address: string): Promise<string[]> {
 export async function publishResource(opts: {
   service: string;
   name: string;
-  file: File;
+  source: PublishSource;
   identifier: string;
   title?: string;
   description?: string;
   tags?: string[];
   isMultiFileZip?: boolean;
 }): Promise<void> {
-  const useInline = opts.file.size <= QDN_INLINE_MAX_BYTES;
-  const inlineData = useInline ? { data64: await fileToBase64(opts.file), filename: opts.file.name } : {};
+  const fileData = opts.source.kind === 'token'
+    ? { sourceToken: opts.source.sourceToken, filename: opts.source.fileName }
+    : { data64: await fileToBase64(opts.source.file), filename: opts.source.file.name };
 
   await qdnRequest({
     action: 'PUBLISH_QDN_RESOURCE',
     service: opts.service,
     name: opts.name,
     identifier: opts.identifier,
-    ...inlineData,
+    ...fileData,
     ...(opts.title       ? { title: opts.title }             : {}),
     ...(opts.description ? { description: opts.description } : {}),
     ...(opts.tags?.length ? { tags: opts.tags }              : {}),
