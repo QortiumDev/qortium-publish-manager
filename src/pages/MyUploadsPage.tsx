@@ -231,7 +231,7 @@ export function MyUploadsPage() {
 
   if (!account) {
     return (
-      <Box sx={{ pt: `${tokens.spacing.topBarHeight + 48}px`, display: 'flex', justifyContent: 'center' }}>
+      <Box sx={{ pt: `calc(var(--publish-top-bar-height, ${tokens.spacing.topBarHeight}px) + 48px)`, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress size={24} sx={{ color: c.accent }} />
       </Box>
     );
@@ -239,7 +239,7 @@ export function MyUploadsPage() {
 
   if (!account.name) {
     return (
-      <Box sx={{ pt: `${tokens.spacing.topBarHeight + 48}px`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto', textAlign: 'center' }}>
+      <Box sx={{ pt: `calc(var(--publish-top-bar-height, ${tokens.spacing.topBarHeight}px) + 48px)`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto', textAlign: 'center' }}>
         <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
           You need a registered Qortal name to publish QDN resources.
         </Typography>
@@ -248,7 +248,7 @@ export function MyUploadsPage() {
   }
 
   return (
-    <Box sx={{ pt: `${tokens.spacing.topBarHeight + 24}px`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto' }}>
+    <Box sx={{ pt: `calc(var(--publish-top-bar-height, ${tokens.spacing.topBarHeight}px) + 24px)`, pb: 4, px: { xs: 2, md: 4 }, maxWidth: 720, mx: 'auto' }}>
 
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2.5 }}>
         <Box>

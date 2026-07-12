@@ -2,6 +2,7 @@ export const APPS = {
   apps:    { qdn: 'Apps',    label: 'Apps'    },
   chain:   { qdn: 'Chain',   label: 'Chain'   },
   groups:  { qdn: 'Groups',  label: 'Groups'  },
+  library: { qdn: 'Library', label: 'Library' },
   names:   { qdn: 'Names',   label: 'Names'   },
   profile: { qdn: 'Profile', label: 'Profile' },
   publish: { qdn: 'Publish', label: 'Publish' },

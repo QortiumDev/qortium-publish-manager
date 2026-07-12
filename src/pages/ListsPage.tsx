@@ -1076,7 +1076,7 @@ export function ListsPage() {
 
   return (
     <Box sx={{
-      pt: `${tokens.spacing.topBarHeight + 24}px`,
+      pt: `calc(var(--publish-top-bar-height, ${tokens.spacing.topBarHeight}px) + 24px)`,
       pb: 6, px: { xs: 2, md: 4 },
       maxWidth: 720, mx: 'auto',
     }}>
