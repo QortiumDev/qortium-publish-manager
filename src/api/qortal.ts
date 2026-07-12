@@ -176,8 +176,8 @@ export async function publishAvatar(name: string, file: File): Promise<void> {
   });
 }
 
-export async function openInNewTab(qortalLink: string): Promise<void> {
-  await qdnRequest({ action: 'OPEN_NEW_TAB', qortalLink });
+export async function openInNewTab(address: string): Promise<void> {
+  await qdnRequest({ action: 'OPEN_NEW_TAB', address });
 }
 
 export async function openDocumentViewer(service: string, name: string, identifier: string): Promise<void> {

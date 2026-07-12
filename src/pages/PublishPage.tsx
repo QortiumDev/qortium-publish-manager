@@ -344,7 +344,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (!account.name) {
       return (
         <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary, textAlign: 'center', py: 2, mt: 3 }}>
-          You need a registered Qortal name to publish QDN resources.
+          You need a registered name to publish QDN resources.
         </Typography>
       );
     }
