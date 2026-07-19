@@ -4,19 +4,19 @@ import { Box, IconButton, Tooltip } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import ExploreIcon from '@mui/icons-material/Explore';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
 import PersonRemoveAlt1Icon from '@mui/icons-material/PersonRemoveAlt1';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useColors } from '../../theme/ColorTokensContext';
 import { tokens } from '../../theme/tokens';
-import { themeAtom, uiStyleAtom } from '../../state/atoms';
-import { EnumTheme } from '../../types';
+import { uiStyleAtom, notificationsEnabledAtom, notificationsSupportedAtom } from '../../state/atoms';
 import { RatingControl } from './RatingControl';
+import { AppIcon, getOwnQdnName } from './AppIdentity';
 
-const APP_QDN_NAME = 'Publish';
+const APP_QDN_NAME = getOwnQdnName('Publish');
 const APP_QDN_IDENTIFIER = 'Publish';
 
 const NAV = [
@@ -27,8 +27,9 @@ const NAV = [
 
 export function TopBar() {
   const c = useColors();
-  const [theme, setTheme] = useAtom(themeAtom);
   const uiStyle = useAtomValue(uiStyleAtom);
+  const [notificationsEnabled, setNotificationsEnabled] = useAtom(notificationsEnabledAtom);
+  const notificationsSupported = useAtomValue(notificationsSupportedAtom);
   const navigate = useNavigate();
   const location = useLocation();
   const headerRef = useRef<HTMLElement | null>(null);
@@ -83,15 +84,6 @@ export function TopBar() {
     void qdnRequest({ action: 'OPEN_NEW_TAB', address: `qdn://APP/Help/Help?new=${APP_QDN_NAME}` });
   }
 
-  function handleToggleTheme() {
-    setTheme(current => {
-      const next = current === EnumTheme.DARK ? EnumTheme.LIGHT : EnumTheme.DARK;
-      document.documentElement.dataset.theme = next;
-      document.documentElement.style.colorScheme = next;
-      return next;
-    });
-  }
-
   const buttonSx = {
     borderRadius: `${isClassic ? tokens.shape.radiusMd : tokens.shape.radius}px`,
     minWidth: 44,
@@ -121,8 +113,8 @@ export function TopBar() {
         boxShadow: isClassic ? c.topBarShadow : 'none',
         display: 'grid',
         gridTemplateColumns: isClassic
-          ? { xs: 'minmax(0, 1fr) auto', sm: 'minmax(0, 1fr) auto auto' }
-          : 'minmax(0, 1fr) auto auto',
+          ? { xs: 'minmax(0, 1fr) auto', sm: 'auto minmax(0, 1fr) auto' }
+          : 'auto minmax(0, 1fr) auto',
         alignItems: 'center',
         px: isClassic ? { xs: 1.25, sm: 1.75 } : 2,
         py: isClassic ? 1 : 0,
@@ -130,16 +122,33 @@ export function TopBar() {
         zIndex: 100,
       }}
     >
-      <Box sx={{
-        fontWeight: tokens.typography.weightBlack,
-        fontSize: '1rem',
-        color: c.textPrimary,
-        minWidth: 0,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        Publish
+      <Box
+        onClick={() => navigate('/')}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          color: c.textPrimary,
+          cursor: 'pointer',
+          '&:hover': { color: c.accent },
+          transition: c.transitionControl,
+          userSelect: 'none',
+          minWidth: 0,
+          mr: 0.5,
+        }}
+      >
+        <AppIcon qdnName={APP_QDN_NAME} />
+        <Box sx={{
+          fontWeight: tokens.typography.weightBlack,
+          fontSize: '1rem',
+          color: 'inherit',
+          maxWidth: { xs: 140, sm: 240 },
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {APP_QDN_NAME}
+        </Box>
       </Box>
 
       <Box sx={{
@@ -178,6 +187,18 @@ export function TopBar() {
         gridColumn: isClassic ? { xs: 2, sm: 'auto' } : 'auto',
         gridRow: isClassic ? { xs: 1, sm: 'auto' } : 'auto',
       }}>
+        {notificationsSupported && (
+          <Tooltip title={notificationsEnabled ? 'Notify me when my publishes go live' : 'Notifications off'} placement="bottom">
+            <IconButton
+              size="small"
+              onClick={() => setNotificationsEnabled(v => !v)}
+              sx={{ ...buttonSx, color: notificationsEnabled ? c.accent : c.textSecondary }}
+            >
+              {notificationsEnabled ? <NotificationsActiveIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        )}
+
         <RatingControl qdnName={APP_QDN_NAME} identifier={APP_QDN_IDENTIFIER} />
 
         <Tooltip title={isFollowed ? 'Stop following this app' : 'Follow this app'} placement="bottom">
@@ -194,12 +215,6 @@ export function TopBar() {
         <Tooltip title="Help & Feedback" placement="bottom">
           <IconButton size="small" onClick={handleOpenHelp} sx={buttonSx}>
             <HelpOutlineIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-
-        <Tooltip title={theme === EnumTheme.DARK ? 'Light mode' : 'Dark mode'} placement="bottom">
-          <IconButton onClick={handleToggleTheme} sx={buttonSx}>
-            {theme === EnumTheme.DARK ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
           </IconButton>
         </Tooltip>
       </Box>

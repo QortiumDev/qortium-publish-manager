@@ -1,6 +1,4 @@
-export type PublishSource =
-  | { kind: 'token'; fileName: string; size: number; sourceToken: string }
-  | { kind: 'file'; file: File };
+export type PublishSource = { kind: 'token'; fileName: string; size: number; sourceToken: string };
 
 export enum EnumTheme {
   DARK = 'dark',

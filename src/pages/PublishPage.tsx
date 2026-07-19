@@ -18,7 +18,6 @@ import {
   publishMultiFileZipAtom,
 } from '../state/atoms';
 import { publishResource, publishAvatar, publishAvatarFromQDN, selectPublishSource, getNamesByAddress, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
-import { zipContainsRootIndex } from '../lib/zipInspect';
 import { SERVICE_TYPES } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -219,7 +218,6 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [selectedName, setSelectedName] = useState<string>('');
   const [ownedNames, setOwnedNames] = useState<string[]>([]);
   const [source, setSource] = useAtom(publishSourceAtom);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [identifier, setIdentifier] = useAtom(publishIdentifierAtom);
   const [title, setTitle] = useAtom(publishTitleAtom);
   const [description, setDescription] = useAtom(publishDescriptionAtom);
@@ -228,13 +226,9 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [publishing, setPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [missingIndex, setMissingIndex] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const sourceFile = source?.kind === 'file' ? source.file : null;
-  const sourceName = source?.kind === 'token' ? source.fileName : sourceFile?.name ?? null;
-  const sourceSize = source?.kind === 'token' ? source.size : sourceFile?.size ?? null;
+  const sourceName = source?.fileName ?? null;
+  const sourceSize = source?.size ?? null;
 
   const handleReset = useCallback(() => {
     setSource(null);
@@ -245,7 +239,6 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     setIsMultiFileZip(false);
     setSuccess(false);
     setError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [setSource, setIdentifier, setTitle, setDescription, setTagsInput, setIsMultiFileZip]);
 
   // Draft fields deliberately survive closing the dialog; only a completed
@@ -266,36 +259,14 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account?.address]);
 
-  // Zip inspection only works for dropped files (we have the File bytes); token-based uploads skip it.
-  const isWebsiteZip = service === 'WEBSITE' && !!sourceName?.toLowerCase().endsWith('.zip') && source?.kind === 'file';
-
-  useEffect(() => {
-    if (!isWebsiteZip || !sourceFile) { setMissingIndex(false); return; }
-    let cancelled = false;
-    zipContainsRootIndex(sourceFile).then(ok => { if (!cancelled) setMissingIndex(!ok); });
-    return () => { cancelled = true; };
-  }, [sourceFile, isWebsiteZip]);
-
   const selectedService = SERVICE_TYPES.find(s => s.value === service);
-
-  const handleFileDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) setSource({ kind: 'file', file: dropped });
-  }, [setSource]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) setSource({ kind: 'file', file: f });
-  };
 
   async function handlePickFile() {
     try {
       const result = await selectPublishSource();
       if (result) setSource(result);
     } catch {
-      fileInputRef.current?.click();
+      setError('File selection is not available on this host.');
     }
   }
 
@@ -448,13 +419,10 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
 
         <Box
           onClick={handlePickFile}
-          onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={handleFileDrop}
           sx={{
-            border: `${tokens.shape.borderWidth} dashed ${isDragOver ? c.accent : c.borderLight}`,
+            border: `${tokens.shape.borderWidth} dashed ${c.borderLight}`,
             borderRadius: `${tokens.shape.radius}px`,
-            bgcolor: isDragOver ? `${c.accent}10` : c.surface,
+            bgcolor: c.surface,
             px: 3, py: 4,
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
             cursor: 'pointer', transition: '0.15s ease',
@@ -475,29 +443,10 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
             </>
           ) : (
             <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
-              Drop a file here or click to choose
+              Click to choose a file
             </Typography>
           )}
-          {/* Fallback for hosts that don't support SELECT_QDN_PUBLISH_SOURCE */}
-          <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} />
         </Box>
-
-        {source?.kind === 'file' && sourceSize !== null && sourceSize > 5 * 1024 * 1024 && (
-          <Typography sx={{ fontSize: '0.78rem', color: c.textSecondary, mt: -1 }}>
-            This file is larger than 5 MiB - the upload may fail on this path. Click the zone again to use the system file picker instead.
-          </Typography>
-        )}
-
-        {missingIndex && (
-          <Box sx={{ bgcolor: `${c.error}18`, border: `1px solid ${c.error}55`, borderRadius: `${tokens.shape.radius}px`, px: 2, py: 1.5, mt: -1 }}>
-            <Typography sx={{ fontSize: '0.78rem', color: c.error, fontWeight: tokens.typography.weightBold, mb: 0.5 }}>
-              No index.html found at the ZIP root
-            </Typography>
-            <Typography sx={{ fontSize: '0.75rem', color: c.error }}>
-              WEBSITE publishing requires index.html directly at the top level of the ZIP - not inside a subfolder. If your files are nested inside a folder (e.g. <code style={{ fontFamily: 'monospace' }}>mysite/index.html</code>), open that folder and re-zip its contents from inside.
-            </Typography>
-          </Box>
-        )}
 
         {sourceName?.toLowerCase().endsWith('.zip') && (
           <FormControlLabel

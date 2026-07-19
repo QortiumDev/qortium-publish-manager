@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, Typography, Button, TextField,
   CircularProgress, Chip,
@@ -10,7 +10,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { publishResource, publishResourceBase64, selectPublishSource, ensureAccountUnlocked } from '../api/qortal';
-import { zipContainsRootIndex } from '../lib/zipInspect';
 import type { PublishSource, QdnResource } from '../types';
 
 function parseTags(raw: string): string[] {
@@ -43,7 +42,6 @@ export function EditDialog({
 
   const [mode, setMode] = useState<'file' | 'base64'>('file');
   const [source, setSource] = useState<PublishSource | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [base64Input, setBase64Input] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -51,9 +49,6 @@ export function EditDialog({
   const [publishing, setPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [missingIndex, setMissingIndex] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open || !resource) return;
@@ -65,36 +60,17 @@ export function EditDialog({
     setMode('file');
     setSuccess(false);
     setError(null);
-    setMissingIndex(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [open, resource]);
 
-  const sourceFile = source?.kind === 'file' ? source.file : null;
-  const sourceName = source?.kind === 'token' ? source.fileName : sourceFile?.name ?? null;
-  const sourceSize = source?.kind === 'token' ? source.size : sourceFile?.size ?? null;
-
-  const isWebsiteZip = resource?.service === 'WEBSITE' && !!sourceName?.toLowerCase().endsWith('.zip') && source?.kind === 'file';
-
-  useEffect(() => {
-    if (!isWebsiteZip || !sourceFile) { setMissingIndex(false); return; }
-    let cancelled = false;
-    zipContainsRootIndex(sourceFile).then(ok => { if (!cancelled) setMissingIndex(!ok); });
-    return () => { cancelled = true; };
-  }, [sourceFile, isWebsiteZip]);
-
-  const handleFileDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) setSource({ kind: 'file', file: dropped });
-  }, []);
+  const sourceName = source?.fileName ?? null;
+  const sourceSize = source?.size ?? null;
 
   async function handlePickFile() {
     try {
       const result = await selectPublishSource();
       if (result) setSource(result);
     } catch {
-      fileInputRef.current?.click();
+      setError('File selection is not available on this host.');
     }
   }
 
@@ -131,7 +107,7 @@ export function EditDialog({
   }
 
   const canSave = !publishing && (
-    mode === 'file' ? !!source && !missingIndex : base64Input.trim().length > 0
+    mode === 'file' ? !!source : base64Input.trim().length > 0
   );
 
   const tags = parseTags(tagsInput);
@@ -198,13 +174,10 @@ export function EditDialog({
           <>
             <Box
               onClick={handlePickFile}
-              onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={handleFileDrop}
               sx={{
-                border: `${tokens.shape.borderWidth} dashed ${isDragOver ? c.accent : c.borderLight}`,
+                border: `${tokens.shape.borderWidth} dashed ${c.borderLight}`,
                 borderRadius: `${tokens.shape.radius}px`,
-                bgcolor: isDragOver ? `${c.accent}10` : c.surface,
+                bgcolor: c.surface,
                 px: 3, py: 4,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
                 cursor: 'pointer', transition: '0.15s ease',
@@ -225,29 +198,10 @@ export function EditDialog({
                 </>
               ) : (
                 <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
-                  Drop replacement file here or click to choose
+                  Click to choose a replacement file
                 </Typography>
               )}
-              {/* Fallback for hosts that don't support SELECT_QDN_PUBLISH_SOURCE */}
-              <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setSource({ kind: 'file', file: f }); }} />
             </Box>
-
-            {source?.kind === 'file' && sourceSize !== null && sourceSize > 5 * 1024 * 1024 && (
-              <Typography sx={{ fontSize: '0.78rem', color: c.textSecondary, mt: -1 }}>
-                This file is larger than 5 MiB - the upload may fail on this path. Click the zone again to use the system file picker instead.
-              </Typography>
-            )}
-
-            {missingIndex && (
-              <Box sx={{ bgcolor: `${c.error}18`, border: `1px solid ${c.error}55`, borderRadius: `${tokens.shape.radius}px`, px: 2, py: 1.5, mt: -1 }}>
-                <Typography sx={{ fontSize: '0.78rem', color: c.error, fontWeight: tokens.typography.weightBold, mb: 0.5 }}>
-                  No index.html found at the ZIP root
-                </Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: c.error }}>
-                  WEBSITE publishing requires index.html directly at the ZIP root level - not inside a subfolder.
-                </Typography>
-              </Box>
-            )}
           </>
         ) : (
           <TextField

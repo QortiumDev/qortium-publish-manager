@@ -57,16 +57,13 @@ export async function publishResource(opts: {
   tags?: string[];
   isMultiFileZip?: boolean;
 }): Promise<void> {
-  const fileData = opts.source.kind === 'token'
-    ? { sourceToken: opts.source.sourceToken, filename: opts.source.fileName }
-    : { data64: await fileToBase64(opts.source.file), filename: opts.source.file.name };
-
   await qdnRequest({
     action: 'PUBLISH_QDN_RESOURCE',
     service: opts.service,
     name: opts.name,
     identifier: opts.identifier,
-    ...fileData,
+    sourceToken: opts.source.sourceToken,
+    filename: opts.source.fileName,
     ...(opts.title       ? { title: opts.title }             : {}),
     ...(opts.description ? { description: opts.description } : {}),
     ...(opts.tags?.length ? { tags: opts.tags }              : {}),
@@ -258,4 +255,38 @@ export async function searchResources(opts: {
 export async function ensureAccountUnlocked(): Promise<boolean> {
   const result = await qdnRequest({ action: 'UNLOCK_SELECTED_ACCOUNT' }) as { isUnlocked?: boolean } | null;
   return result?.isUnlocked === true;
+}
+
+export type NotificationRule = {
+  notificationId: string;
+  event: string;
+  filters: Record<string, boolean | number | string | string[]>;
+  title?: string;
+  text?: string;
+  link?: string;
+};
+
+export async function supportsNotifications(): Promise<boolean> {
+  try {
+    const actions = await qdnRequest({ action: 'SHOW_ACTIONS' });
+    return Array.isArray(actions) && actions.includes('NOTIFICATION_ADD');
+  } catch { return false; }
+}
+
+export async function getNotificationRules(): Promise<NotificationRule[]> {
+  try {
+    const res = await qdnRequest({ action: 'NOTIFICATION_GET' });
+    return Array.isArray(res) ? (res as NotificationRule[]) : [];
+  } catch { return []; }
+}
+
+export async function addNotificationRule(rule: NotificationRule): Promise<void> {
+  await qdnRequest({ action: 'NOTIFICATION_ADD', subscriptions: [rule] });
+}
+
+export async function removeNotificationRules(notificationIds?: string[]): Promise<void> {
+  await qdnRequest({
+    action: 'NOTIFICATION_REMOVE',
+    ...(notificationIds ? { notificationIds } : {}),
+  });
 }
