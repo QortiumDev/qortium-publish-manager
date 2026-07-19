@@ -192,7 +192,9 @@ export function MyUploadsPage() {
   const load = useCallback(async (name: string) => {
     setLoading(true);
     const res = await listResources(name);
-    setResources(res);
+    // LIST_QDN_RESOURCES for a single name orders by name (a no-op tie here),
+    // not by created_when, so sort by recency ourselves.
+    setResources(res.slice().sort((a, b) => (b.created ?? 0) - (a.created ?? 0)));
     setLoading(false);
   }, []);
 

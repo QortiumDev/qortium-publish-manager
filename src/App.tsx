@@ -9,12 +9,14 @@ import { themeAtom, accentAtom, accountAtom, uiStyleAtom } from './state/atoms';
 import { EnumTheme } from './types';
 import { AppRoutes } from './routes/Routes';
 import { getUserAccount } from './api/qortal';
+import { useOwnPublishNotifications } from './hooks/useOwnPublishNotifications';
 
 export function App() {
   const [theme] = useAtom(themeAtom);
   const [accent] = useAtom(accentAtom);
   const [uiStyle] = useAtom(uiStyleAtom);
   const setAccount = useSetAtom(accountAtom);
+  useOwnPublishNotifications();
   const mode = theme === EnumTheme.DARK ? 'dark' : 'light';
   const colors = useMemo(() => getColorTokens(mode, uiStyle, accent), [mode, uiStyle, accent]);
   const muiTheme = useMemo(

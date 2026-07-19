@@ -1,4 +1,5 @@
 import { atom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 import { EnumTheme, type PublishSource } from '../types';
 
 export type UiStyle = 'classic' | 'modern';
@@ -43,3 +44,9 @@ export const publishTitleAtom        = atom<string>('');
 export const publishDescriptionAtom  = atom<string>('');
 export const publishTagsInputAtom    = atom<string>('');
 export const publishMultiFileZipAtom = atom<boolean>(false);
+
+// Background "your resource is live" notifications (own name, RESOURCE_PUBLISHED).
+// notificationsSupportedAtom is set once after a SHOW_ACTIONS feature check;
+// notificationsEnabledAtom is the user's local on/off preference.
+export const notificationsSupportedAtom = atom<boolean>(false);
+export const notificationsEnabledAtom = atomWithStorage<boolean>('publish-own-notifications-enabled', true);
