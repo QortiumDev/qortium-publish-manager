@@ -30,6 +30,20 @@ function parseTags(raw: string): string[] {
   return raw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
 }
 
+// QDN identifiers are capped at 64 bytes (UTF-8) at the core transaction level;
+// exceeding it fails late with an opaque error, so clamp as the user types.
+const MAX_IDENTIFIER_BYTES = 64;
+
+function utf8Length(s: string): number {
+  return new TextEncoder().encode(s).length;
+}
+
+function clampIdentifierBytes(s: string): string {
+  let out = s;
+  while (utf8Length(out) > MAX_IDENTIFIER_BYTES) out = out.slice(0, -1);
+  return out;
+}
+
 const DEFAULT_AVATAR_NAME = '7R15M3G157U5';
 
 function NameAvatarSection({ name }: { name: string }) {
@@ -469,11 +483,11 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
         <TextField
           label="Identifier"
           value={identifier}
-          onChange={e => setIdentifier(e.target.value)}
+          onChange={e => setIdentifier(clampIdentifierBytes(e.target.value))}
           placeholder="default"
           size="small"
           fullWidth
-          helperText={'Unique key for this resource under your name. Defaults to "default".'}
+          helperText={`${utf8Length(identifier)}/${MAX_IDENTIFIER_BYTES} bytes · Unique key for this resource under your name. Defaults to "default".`}
           slotProps={{
             inputLabel: { sx: { fontSize: '0.8rem', color: c.textSecondary } },
             htmlInput:  { sx: { fontSize: '0.8rem', color: c.textPrimary, fontFamily: 'monospace' } },
