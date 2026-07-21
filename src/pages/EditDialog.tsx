@@ -100,7 +100,12 @@ export function EditDialog({
       setSuccess(true);
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed.');
+      const raw = err instanceof Error ? err.message : String(err);
+      setError(
+        raw.includes('MISSING_INDEX_FILE')
+          ? 'This is a known Home ZIP-handling issue, not a problem with your archive: Home v1.5.2 sends replacement ZIPs to Core without unpacking them, so a valid index.html at the ZIP root can still fail validation. Tracked in Home issue #182 - try again once it ships a fix.'
+          : raw || 'Update failed.',
+      );
     } finally {
       setPublishing(false);
     }
