@@ -14,6 +14,24 @@ export async function getUserAccount(): Promise<{ address: string; name: string 
   return { address: res.address, name: res.name || null };
 }
 
+// Core returns title/description/tags/category nested under `metadata` for
+// LIST_QDN_RESOURCES and SEARCH_QDN_RESOURCES; hoist them to the top level
+// so every consumer can keep reading resource.title etc. directly.
+type RawQdnResource = QdnResource & {
+  metadata?: { title?: string; description?: string; tags?: string[]; category?: string };
+};
+
+function normalizeResource(raw: RawQdnResource): QdnResource {
+  const { metadata, ...rest } = raw;
+  return {
+    ...rest,
+    title: metadata?.title ?? raw.title,
+    description: metadata?.description ?? raw.description,
+    tags: metadata?.tags ?? raw.tags,
+    category: metadata?.category ?? raw.category,
+  };
+}
+
 export async function listResources(name: string, service?: string, offset = 0, limit = 100): Promise<QdnResource[]> {
   try {
     const res = await qdnRequest({
@@ -24,8 +42,8 @@ export async function listResources(name: string, service?: string, offset = 0, 
       offset,
       reverse: true,
       ...(service ? { service } : {}),
-    }) as QdnResource[];
-    return res ?? [];
+    }) as RawQdnResource[];
+    return (res ?? []).map(normalizeResource);
   } catch { return []; }
 }
 
@@ -111,8 +129,8 @@ export async function getResource(service: string, name: string, identifier: str
       identifier,
       includeMetadata: true,
       limit: 1,
-    }) as QdnResource[];
-    return res?.[0] ?? null;
+    }) as RawQdnResource[];
+    return res?.[0] ? normalizeResource(res[0]) : null;
   } catch { return null; }
 }
 
@@ -247,8 +265,8 @@ export async function searchResources(opts: {
       reverse: true,
       ...(opts.service ? { service: opts.service } : {}),
       ...(opts.query   ? { query: opts.query }     : {}),
-    }) as QdnResource[];
-    return res ?? [];
+    }) as RawQdnResource[];
+    return (res ?? []).map(normalizeResource);
   } catch { return []; }
 }
 
