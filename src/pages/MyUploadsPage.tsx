@@ -35,6 +35,8 @@ async function copyText(text: string): Promise<boolean> {
   } catch { return false; }
 }
 
+const PAGE_SIZE = 50;
+
 function buildQdnUrl(r: QdnResource): string {
   const id = r.identifier && r.identifier !== 'default' ? `/${encodeURIComponent(r.identifier)}` : '';
   return `qdn://${r.service}/${encodeURIComponent(r.name)}${id}`;
@@ -55,12 +57,14 @@ function formatBytes(bytes: number | undefined): string {
 function UploadRow({
   r,
   last,
+  showName,
   onView,
   onEdit,
   onDelete,
 }: {
   r: QdnResource;
   last: boolean;
+  showName: boolean;
   onView: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
@@ -105,9 +109,9 @@ function UploadRow({
         <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {r.title || r.identifier}
         </Typography>
-        {r.title && (
+        {(showName || r.title) && (
           <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {r.identifier}
+            {showName ? `${r.name} / ${r.identifier}` : r.identifier}
           </Typography>
         )}
       </Box>
@@ -180,41 +184,55 @@ export function MyUploadsPage() {
 
   const [resources, setResources] = useState<QdnResource[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
   const [serviceFilter, setServiceFilter] = useState('ALL');
+  const [nameFilter, setNameFilter] = useState('ALL');
   const [editTarget, setEditTarget] = useState<QdnResource | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<QdnResource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewTarget, setViewTarget] = useState<QdnResource | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [ownedNames, setOwnedNames] = useState<string[]>([]);
-  const [selectedName, setSelectedName] = useState('');
 
-  const load = useCallback(async (name: string) => {
-    setLoading(true);
-    const res = await listResources(name);
-    // LIST_QDN_RESOURCES for a single name orders by name (a no-op tie here),
-    // not by created_when, so sort by recency ourselves.
-    setResources(res.slice().sort((a, b) => (b.created ?? 0) - (a.created ?? 0)));
-    setLoading(false);
+  // Every publish type (service) is applicable to every registered name, so
+  // resources are fetched across ALL of the user's owned names at once -
+  // "My Publishes" should show everything, not just one name at a time.
+  // Fetched in pages (limit grows by PAGE_SIZE per "Load more" click) rather
+  // than all at once, since some accounts may have a very large publish history.
+  const load = useCallback(async (names: string[], limit: number, background = false) => {
+    if (names.length === 0) return;
+    if (background) setLoadingMore(true); else setLoading(true);
+    const results = await Promise.all(names.map(n => listResources(n, undefined, 0, limit)));
+    // A name whose page came back full may still have more beyond this limit.
+    setHasMore(results.some(r => r.length === limit));
+    // LIST_QDN_RESOURCES orders by name, not by created_when, so sort by recency ourselves.
+    setResources(results.flat().sort((a, b) => (b.created ?? 0) - (a.created ?? 0)));
+    if (background) setLoadingMore(false); else setLoading(false);
   }, []);
 
   useEffect(() => {
     if (!account?.address) return;
     getNamesByAddress(account.address).then(names => {
       setOwnedNames(names);
-      setSelectedName(prev => (names.length > 0 && !names.includes(prev)) ? names[0] : prev);
+      setPageLimit(PAGE_SIZE);
+      load(names, PAGE_SIZE);
     });
-  }, [account?.address]);
+  }, [account?.address, load]);
 
-  useEffect(() => {
-    if (selectedName) load(selectedName);
-  }, [selectedName, load]);
+  const loadMore = useCallback(() => {
+    const next = pageLimit + PAGE_SIZE;
+    setPageLimit(next);
+    load(ownedNames, next, true);
+  }, [pageLimit, ownedNames, load]);
 
   const serviceTypes = ['ALL', ...Array.from(new Set(resources.map(r => r.service))).sort()];
 
-  const filtered = serviceFilter === 'ALL'
-    ? resources
-    : resources.filter(r => r.service === serviceFilter);
+  const filtered = resources.filter(r =>
+    (serviceFilter === 'ALL' || r.service === serviceFilter) &&
+    (nameFilter === 'ALL' || r.name === nameFilter)
+  );
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -223,7 +241,7 @@ export function MyUploadsPage() {
       if (!await ensureAccountUnlocked()) return;
       await deleteResource(deleteTarget.service, deleteTarget.name, deleteTarget.identifier);
       setResources(prev => prev.filter(r =>
-        !(r.service === deleteTarget.service && r.identifier === deleteTarget.identifier)
+        !(r.name === deleteTarget.name && r.service === deleteTarget.service && r.identifier === deleteTarget.identifier)
       ));
     } finally {
       setDeleting(false);
@@ -259,8 +277,8 @@ export function MyUploadsPage() {
           </Typography>
           <TextField
             select
-            value={selectedName}
-            onChange={e => { setSelectedName(e.target.value); setServiceFilter('ALL'); }}
+            value={nameFilter}
+            onChange={e => setNameFilter(e.target.value)}
             size="small"
             disabled={ownedNames.length <= 1}
             slotProps={{
@@ -277,6 +295,7 @@ export function MyUploadsPage() {
               '& .MuiSelect-icon': { display: ownedNames.length > 1 ? undefined : 'none' },
             }}
           >
+            <MenuItem value="ALL" sx={{ fontSize: '0.8rem' }}>All names</MenuItem>
             {ownedNames.map(n => (
               <MenuItem key={n} value={n} sx={{ fontSize: '0.8rem' }}>{n}</MenuItem>
             ))}
@@ -285,8 +304,8 @@ export function MyUploadsPage() {
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Refresh">
           <IconButton
-            onClick={() => load(selectedName)}
-            disabled={loading || !selectedName}
+            onClick={() => load(ownedNames, pageLimit)}
+            disabled={loading || ownedNames.length === 0}
             sx={{ borderRadius: `${tokens.shape.radius}px`, color: c.textSecondary, '&:hover': { color: c.accent, bgcolor: c.borderLight } }}
           >
             <RefreshIcon fontSize="small" />
@@ -348,8 +367,9 @@ export function MyUploadsPage() {
         ) : (
           filtered.map((r, i) => (
             <UploadRow
-              key={`${r.service}-${r.identifier}`}
+              key={`${r.name}-${r.service}-${r.identifier}`}
               r={r}
+              showName={ownedNames.length > 1}
               last={i === filtered.length - 1}
               onView={() => setViewTarget(r)}
               onEdit={e => { e.stopPropagation(); setEditTarget(r); }}
@@ -359,9 +379,28 @@ export function MyUploadsPage() {
         )}
       </Box>
 
+      {hasMore && !loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+          <Button
+            onClick={loadMore}
+            disabled={loadingMore}
+            size="small"
+            sx={{
+              fontSize: '0.7rem', fontWeight: tokens.typography.weightBold, letterSpacing: '0.04em',
+              textTransform: 'none', borderRadius: '50px', px: 2.5,
+              color: c.textSecondary, border: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+              '&:hover': { color: c.accent, borderColor: c.accent, bgcolor: c.borderLight },
+            }}
+          >
+            {loadingMore ? <CircularProgress size={14} sx={{ color: c.accent, mr: 1 }} /> : null}
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </Button>
+        </Box>
+      )}
+
       {filtered.length > 0 && (
         <Typography sx={{ fontSize: '0.65rem', color: c.textSecondary, mt: 1, textAlign: 'right' }}>
-          {filtered.length} resource{filtered.length !== 1 ? 's' : ''}
+          {filtered.length} resource{filtered.length !== 1 ? 's' : ''}{hasMore ? '+' : ''}
         </Typography>
       )}
 
@@ -373,7 +412,7 @@ export function MyUploadsPage() {
         open={!!editTarget}
         resource={editTarget}
         onClose={() => setEditTarget(null)}
-        onSuccess={() => load(selectedName)}
+        onSuccess={() => load(ownedNames, pageLimit)}
       />
 
       <PublishDialog open={publishOpen} onClose={() => setPublishOpen(false)} />
