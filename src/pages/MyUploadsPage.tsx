@@ -578,6 +578,7 @@ export function MyUploadsPage() {
           hasNext={hasNextView}
           onPrev={() => handleViewerNavigate('prev')}
           onNext={() => handleViewerNavigate('next')}
+          ownContent
         />
       )}
 

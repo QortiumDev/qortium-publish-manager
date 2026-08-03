@@ -486,6 +486,7 @@ export function ResourceViewerDialog({
   hasNext,
   onPrev,
   onNext,
+  ownContent,
 }: {
   resource: QdnResource;
   onClose: () => void;
@@ -494,6 +495,7 @@ export function ResourceViewerDialog({
   hasNext?: boolean;
   onPrev?: () => void;
   onNext?: () => void;
+  ownContent?: boolean;
 }) {
   const c = useColors();
   const [properties, setProperties] = useState<ResourceProperties | null>(null);
@@ -848,9 +850,12 @@ export function ResourceViewerDialog({
               </Button>
             )}
 
-            <Box sx={{ width: '1px', height: 20, bgcolor: c.borderLight, mx: 0.5, alignSelf: 'center' }} />
-
-            <BlockFollowButtons resource={resource} />
+            {!ownContent && (
+              <>
+                <Box sx={{ width: '1px', height: 20, bgcolor: c.borderLight, mx: 0.5, alignSelf: 'center' }} />
+                <BlockFollowButtons resource={resource} />
+              </>
+            )}
           </Box>
 
           <Button
