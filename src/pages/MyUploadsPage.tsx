@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, CircularProgress, IconButton,
   Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, Chip, TextField, MenuItem,
+  Button, Chip, TextField, MenuItem, Checkbox,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -37,6 +37,10 @@ async function copyText(text: string): Promise<boolean> {
 
 const PAGE_SIZE = 50;
 
+function resourceKey(r: QdnResource): string {
+  return `${r.name}-${r.service}-${r.identifier}`;
+}
+
 function buildQdnUrl(r: QdnResource): string {
   const id = r.identifier && r.identifier !== 'default' ? `/${encodeURIComponent(r.identifier)}` : '';
   return `qdn://${r.service}/${encodeURIComponent(r.name)}${id}`;
@@ -58,16 +62,24 @@ function UploadRow({
   r,
   last,
   showName,
+  selected,
+  highlighted,
   onView,
   onEdit,
   onDelete,
+  onToggleSelect,
+  rowRef,
 }: {
   r: QdnResource;
   last: boolean;
   showName: boolean;
+  selected: boolean;
+  highlighted: boolean;
   onView: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
+  onToggleSelect: (e: React.SyntheticEvent) => void;
+  rowRef: (el: HTMLDivElement | null) => void;
 }) {
   const c = useColors();
   const [copied, setCopied] = useState(false);
@@ -83,16 +95,31 @@ function UploadRow({
 
   return (
     <Box
+      ref={rowRef}
       onClick={onView}
       sx={{
         px: 2.5, py: 1.75,
         display: 'flex', alignItems: 'center', gap: 2,
         borderBottom: last ? 'none' : `1px solid ${c.borderLight}`,
+        borderLeft: `3px solid ${highlighted ? c.accent : 'transparent'}`,
+        bgcolor: highlighted ? `${c.accent}0d` : 'transparent',
         cursor: 'pointer',
-        '&:hover': { bgcolor: c.borderLight },
+        '&:hover': { bgcolor: highlighted ? `${c.accent}1a` : c.borderLight },
         transition: '0.12s ease',
       }}
     >
+      <Checkbox
+        size="small"
+        checked={selected}
+        onClick={e => e.stopPropagation()}
+        onChange={onToggleSelect}
+        sx={{
+          p: 0.5, flexShrink: 0,
+          color: c.borderLight,
+          '&.Mui-checked': { color: c.accent },
+        }}
+      />
+
       <Box
         sx={{
           fontSize: '0.6rem', fontWeight: tokens.typography.weightBold,
@@ -193,8 +220,14 @@ export function MyUploadsPage() {
   const [deleteTarget, setDeleteTarget] = useState<QdnResource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewTarget, setViewTarget] = useState<QdnResource | null>(null);
+  const [lastViewedKey, setLastViewedKey] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [ownedNames, setOwnedNames] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Every publish type (service) is applicable to every registered name, so
   // resources are fetched across ALL of the user's owned names at once -
@@ -234,18 +267,108 @@ export function MyUploadsPage() {
     (nameFilter === 'ALL' || r.name === nameFilter)
   );
 
+  // Selection is scoped to the currently filtered view, so a filter change
+  // clears it rather than leaving an invisible, stale count behind.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [serviceFilter, nameFilter]);
+
+  // Once the viewer dialog closes, scroll back to and highlight whatever was
+  // last looked at so it's not lost in a long list.
+  useEffect(() => {
+    if (viewTarget || !lastViewedKey) return;
+    rowRefs.current.get(lastViewedKey)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [viewTarget, lastViewedKey]);
+
+  const viewIndex = viewTarget ? filtered.findIndex(r => resourceKey(r) === resourceKey(viewTarget)) : -1;
+  const hasPrevView = viewIndex > 0;
+  const hasNextView = viewIndex >= 0 && viewIndex < filtered.length - 1;
+
+  function handleCloseViewer() {
+    if (viewTarget) setLastViewedKey(resourceKey(viewTarget));
+    setViewTarget(null);
+  }
+
+  function handleViewerNavigate(direction: 'prev' | 'next') {
+    if (viewIndex < 0) return;
+    const next = filtered[direction === 'prev' ? viewIndex - 1 : viewIndex + 1];
+    if (next) setViewTarget(next);
+  }
+
+  // Deleting from inside the viewer auto-advances to whatever slides into the
+  // deleted item's spot, so sifting through publishes doesn't bounce back to
+  // the list after every delete.
+  async function handleViewerDelete() {
+    if (!viewTarget) return;
+    if (!await ensureAccountUnlocked()) throw new Error('Account is locked.');
+    await deleteResource(viewTarget.service, viewTarget.name, viewTarget.identifier);
+    const key = resourceKey(viewTarget);
+    const idx = filtered.findIndex(r => resourceKey(r) === key);
+    const remaining = filtered.filter(r => resourceKey(r) !== key);
+    setResources(prev => prev.filter(r => resourceKey(r) !== key));
+    setSelected(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    if (remaining.length === 0) {
+      setLastViewedKey(null);
+      setViewTarget(null);
+    } else {
+      setViewTarget(remaining[Math.min(idx, remaining.length - 1)]);
+    }
+  }
+
+  function toggleSelect(key: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
       if (!await ensureAccountUnlocked()) return;
       await deleteResource(deleteTarget.service, deleteTarget.name, deleteTarget.identifier);
-      setResources(prev => prev.filter(r =>
-        !(r.name === deleteTarget.name && r.service === deleteTarget.service && r.identifier === deleteTarget.identifier)
-      ));
+      const key = resourceKey(deleteTarget);
+      setResources(prev => prev.filter(r => resourceKey(r) !== key));
+      setSelected(prev => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const targets = resources.filter(r => selected.has(resourceKey(r)));
+    setBulkDeleting(true);
+    setBulkProgress({ done: 0, total: targets.length });
+    try {
+      if (!await ensureAccountUnlocked()) return;
+      for (const r of targets) {
+        await deleteResource(r.service, r.name, r.identifier);
+        const key = resourceKey(r);
+        setResources(prev => prev.filter(x => resourceKey(x) !== key));
+        setSelected(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+        setBulkProgress(p => p ? { done: p.done + 1, total: p.total } : p);
+      }
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteOpen(false);
+      setBulkProgress(null);
     }
   }
 
@@ -343,6 +466,41 @@ export function MyUploadsPage() {
         </Box>
       )}
 
+      {selected.size > 0 && (
+        <Box
+          sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            mb: 1.5, px: 2, py: 1,
+            border: `${tokens.shape.borderWidth} solid ${c.accent}`,
+            borderRadius: `${tokens.shape.radius}px`,
+            bgcolor: `${c.accent}12`,
+          }}
+        >
+          <Typography sx={{ fontSize: '0.78rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
+            {selected.size} selected
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              onClick={() => setSelected(new Set())}
+              sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+            >
+              Clear
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              disableElevation
+              startIcon={<DeleteIcon fontSize="small" />}
+              onClick={() => setBulkDeleteOpen(true)}
+              sx={{ bgcolor: c.error, color: '#fff', borderRadius: '50px', '&:hover': { bgcolor: '#c0392b' } }}
+            >
+              Delete selected
+            </Button>
+          </Box>
+        </Box>
+      )}
+
       <Box sx={{ border: `${tokens.shape.borderWidth} solid ${c.borderLight}`, borderRadius: `${tokens.shape.radius}px`, bgcolor: c.surface, overflow: 'hidden' }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -365,17 +523,24 @@ export function MyUploadsPage() {
             </Button>
           </Box>
         ) : (
-          filtered.map((r, i) => (
-            <UploadRow
-              key={`${r.name}-${r.service}-${r.identifier}`}
-              r={r}
-              showName={ownedNames.length > 1}
-              last={i === filtered.length - 1}
-              onView={() => setViewTarget(r)}
-              onEdit={e => { e.stopPropagation(); setEditTarget(r); }}
-              onDelete={e => { e.stopPropagation(); setDeleteTarget(r); }}
-            />
-          ))
+          filtered.map((r, i) => {
+            const key = resourceKey(r);
+            return (
+              <UploadRow
+                key={key}
+                r={r}
+                showName={ownedNames.length > 1}
+                last={i === filtered.length - 1}
+                selected={selected.has(key)}
+                highlighted={key === lastViewedKey}
+                onView={() => setViewTarget(r)}
+                onEdit={e => { e.stopPropagation(); setEditTarget(r); }}
+                onDelete={e => { e.stopPropagation(); setDeleteTarget(r); }}
+                onToggleSelect={() => toggleSelect(key)}
+                rowRef={el => { if (el) rowRefs.current.set(key, el); else rowRefs.current.delete(key); }}
+              />
+            );
+          })
         )}
       </Box>
 
@@ -405,7 +570,15 @@ export function MyUploadsPage() {
       )}
 
       {viewTarget && (
-        <ResourceViewerDialog resource={viewTarget} onClose={() => setViewTarget(null)} />
+        <ResourceViewerDialog
+          resource={viewTarget}
+          onClose={handleCloseViewer}
+          onDelete={handleViewerDelete}
+          hasPrev={hasPrevView}
+          hasNext={hasNextView}
+          onPrev={() => handleViewerNavigate('prev')}
+          onNext={() => handleViewerNavigate('next')}
+        />
       )}
 
       <EditDialog
@@ -455,6 +628,46 @@ export function MyUploadsPage() {
             sx={{ bgcolor: c.error, color: '#fff', borderRadius: '50px', '&:hover': { bgcolor: '#c0392b' }, opacity: deleting ? 0.4 : 1 }}
           >
             {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={bulkDeleteOpen}
+        onClose={() => !bulkDeleting && setBulkDeleteOpen(false)}
+        PaperProps={{
+          sx: { bgcolor: c.surface, border: `${tokens.shape.borderWidth} solid ${c.borderLight}`, borderRadius: 0, minWidth: 340 },
+        }}
+      >
+        <DialogTitle sx={{ px: 3, py: 2, borderBottom: `${tokens.shape.borderWidth} solid ${c.borderLight}`, fontSize: '0.9rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
+          Delete {selected.size} resource{selected.size !== 1 ? 's' : ''}?
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography sx={{ fontSize: '0.8rem', color: c.textSecondary }}>
+            This broadcasts a delete transaction for each selected resource, one at a time. They will be permanently removed.
+          </Typography>
+          {bulkProgress && (
+            <Typography sx={{ fontSize: '0.75rem', color: c.textSecondary, mt: 1.5 }}>
+              Deleting {bulkProgress.done} / {bulkProgress.total}…
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+          <Button
+            onClick={() => setBulkDeleteOpen(false)}
+            disabled={bulkDeleting}
+            sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            variant="contained"
+            disableElevation
+            sx={{ bgcolor: c.error, color: '#fff', borderRadius: '50px', '&:hover': { bgcolor: '#c0392b' }, opacity: bulkDeleting ? 0.4 : 1 }}
+          >
+            {bulkDeleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

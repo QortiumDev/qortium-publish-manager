@@ -8,12 +8,15 @@ import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import DownloadIcon from '@mui/icons-material/Download';
+import DeleteIcon from '@mui/icons-material/Delete';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
 import BlockIcon from '@mui/icons-material/Block';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { fetchResourceText, fetchResourceAsBase64, openInNewTab, openDocumentViewer, fetchResourceProperties, type ResourceProperties } from '../api/qortal';
@@ -478,13 +481,26 @@ function BlockFollowButtons({ resource }: { resource: QdnResource }) {
 export function ResourceViewerDialog({
   resource,
   onClose,
+  onDelete,
+  hasPrev,
+  hasNext,
+  onPrev,
+  onNext,
 }: {
   resource: QdnResource;
   onClose: () => void;
+  onDelete?: () => Promise<void>;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
 }) {
   const c = useColors();
   const [properties, setProperties] = useState<ResourceProperties | null>(null);
   const [propsLoading, setPropsLoading] = useState(true);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setProperties(null);
@@ -494,6 +510,26 @@ export function ResourceViewerDialog({
       setPropsLoading(false);
     });
   }, [resource.service, resource.name, resource.identifier]);
+
+  // Resource can change under this dialog (Prev/Next, or auto-advance after
+  // delete) without it closing, so per-resource UI state needs its own reset.
+  useEffect(() => {
+    setConfirmingDelete(false);
+    setDeleting(false);
+    setDeleteError(null);
+  }, [resource.service, resource.name, resource.identifier]);
+
+  async function handleConfirmDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Delete failed.');
+      setDeleting(false);
+    }
+  }
 
   const viewerKind = resolveViewerKind(resource.service, properties?.mimeType ?? undefined);
   const resourceUrl = buildResourceUrl(resource.service, resource.name, resource.identifier);
@@ -540,9 +576,52 @@ export function ResourceViewerDialog({
         >
           {resource.identifier}
         </Typography>
+        {(onPrev || onNext) && (
+          <>
+            <Tooltip title="Previous">
+              <span>
+                <IconButton
+                  size="small"
+                  disabled={!hasPrev || deleting}
+                  onClick={onPrev}
+                  sx={{ color: c.textSecondary, '&:hover': { color: c.textPrimary, bgcolor: c.borderLight } }}
+                >
+                  <NavigateBeforeIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Next">
+              <span>
+                <IconButton
+                  size="small"
+                  disabled={!hasNext || deleting}
+                  onClick={onNext}
+                  sx={{ color: c.textSecondary, '&:hover': { color: c.textPrimary, bgcolor: c.borderLight } }}
+                >
+                  <NavigateNextIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </>
+        )}
+        {onDelete && (
+          <Tooltip title="Delete">
+            <span>
+              <IconButton
+                size="small"
+                disabled={deleting}
+                onClick={() => setConfirmingDelete(true)}
+                sx={{ color: c.textSecondary, '&:hover': { color: c.error, bgcolor: `${c.error}18` } }}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
         <IconButton
           size="small"
           onClick={onClose}
+          disabled={deleting}
           sx={{ color: c.textSecondary, '&:hover': { color: c.textPrimary } }}
         >
           <CloseIcon fontSize="small" />
@@ -701,52 +780,87 @@ export function ResourceViewerDialog({
 
       </DialogContent>
 
-      <DialogActions
-        sx={{
-          px: 3, pb: 3,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          borderTop: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
-          flexWrap: 'wrap', gap: 1,
-        }}
-      >
-        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
-          <CopyLinkButton qdnUrl={qdnUrl} />
-          {viewerKind !== 'app' && (
-            <DownloadButton resource={resource} properties={properties} />
-          )}
-          {viewerKind === 'app' && (
-            <Button
-              size="small"
-              startIcon={<OpenInNewIcon fontSize="small" />}
-              onClick={() => void openInNewTab(qdnUrl)}
-              sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
-            >
-              Open in Qortium
-            </Button>
-          )}
-          {viewerKind === 'document' && (
-            <Button
-              size="small"
-              startIcon={<OpenInNewIcon fontSize="small" />}
-              onClick={() => void openDocumentViewer(resource.service, resource.name, resource.identifier)}
-              sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
-            >
-              Open in Viewer
-            </Button>
-          )}
-
-          <Box sx={{ width: '1px', height: 20, bgcolor: c.borderLight, mx: 0.5, alignSelf: 'center' }} />
-
-          <BlockFollowButtons resource={resource} />
-        </Box>
-
-        <Button
-          onClick={onClose}
-          sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+      {confirmingDelete ? (
+        <DialogActions
+          sx={{
+            px: 3, pb: 3, pt: 2,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            borderTop: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+            flexWrap: 'wrap', gap: 1.5,
+          }}
         >
-          Close
-        </Button>
-      </DialogActions>
+          <Typography sx={{ fontSize: '0.78rem', color: deleteError ? c.error : c.textSecondary, flex: 1, minWidth: 200 }}>
+            {deleteError ?? "Delete this resource? This broadcasts a delete transaction and can't be undone."}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              disabled={deleting}
+              onClick={() => { setConfirmingDelete(false); setDeleteError(null); }}
+              sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              disableElevation
+              disabled={deleting}
+              onClick={handleConfirmDelete}
+              sx={{ bgcolor: c.error, color: '#fff', borderRadius: '50px', '&:hover': { bgcolor: '#c0392b' }, opacity: deleting ? 0.5 : 1 }}
+            >
+              {deleting ? 'Deleting…' : 'Confirm delete'}
+            </Button>
+          </Box>
+        </DialogActions>
+      ) : (
+        <DialogActions
+          sx={{
+            px: 3, pb: 3,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            borderTop: `${tokens.shape.borderWidth} solid ${c.borderLight}`,
+            flexWrap: 'wrap', gap: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+            <CopyLinkButton qdnUrl={qdnUrl} />
+            {viewerKind !== 'app' && (
+              <DownloadButton resource={resource} properties={properties} />
+            )}
+            {viewerKind === 'app' && (
+              <Button
+                size="small"
+                startIcon={<OpenInNewIcon fontSize="small" />}
+                onClick={() => void openInNewTab(qdnUrl)}
+                sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+              >
+                Open in Qortium
+              </Button>
+            )}
+            {viewerKind === 'document' && (
+              <Button
+                size="small"
+                startIcon={<OpenInNewIcon fontSize="small" />}
+                onClick={() => void openDocumentViewer(resource.service, resource.name, resource.identifier)}
+                sx={{ color: c.textSecondary, borderRadius: '50px', fontSize: '0.75rem', '&:hover': { bgcolor: c.borderLight } }}
+              >
+                Open in Viewer
+              </Button>
+            )}
+
+            <Box sx={{ width: '1px', height: 20, bgcolor: c.borderLight, mx: 0.5, alignSelf: 'center' }} />
+
+            <BlockFollowButtons resource={resource} />
+          </Box>
+
+          <Button
+            onClick={onClose}
+            sx={{ color: c.textSecondary, borderRadius: '50px', '&:hover': { bgcolor: c.borderLight } }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      )}
     </Dialog>
   );
 }
