@@ -9,8 +9,26 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
-import { publishResource, publishResourceBase64, selectPublishSource, ensureAccountUnlocked } from '../api/qortal';
+import {
+  publishResource, publishResourceBase64, selectPublishSource, ensureAccountUnlocked,
+  fetchResourceProperties, fetchResourceText,
+} from '../api/qortal';
 import type { PublishSource, QdnResource } from '../types';
+
+const JSON_LIKE_SERVICES = ['JSON', 'METADATA'];
+
+// Services that are textual by convention even when Core reports no mimeType.
+const TEXT_LIKE_SERVICES = new Set(['JSON', 'METADATA', 'BLOG_POST', 'PLAYLIST']);
+
+// Deliberately stricter than the resource viewer's preview heuristic: that one
+// defaults unknown types to 'text' since worst case is a garbled read-only
+// preview, but here a false positive means editing decodes-and-re-encodes a
+// binary file through lossy UTF-8, silently corrupting it on save. Only trust
+// an explicit text-ish mimeType, or a service that's textual by convention.
+function isEditableAsText(service: string, mimeType?: string): boolean {
+  if (mimeType) return /^text\//i.test(mimeType) || /\b(json|xml|yaml|csv|markdown)\b/i.test(mimeType);
+  return TEXT_LIKE_SERVICES.has(service);
+}
 
 function parseTags(raw: string): string[] {
   return raw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 5);
@@ -27,6 +45,14 @@ function stripDataUrlPrefix(s: string): string {
   return m ? m[1] : s;
 }
 
+// btoa() only accepts Latin1, so UTF-8 text has to go through raw bytes first.
+function base64FromText(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
 export function EditDialog({
   open,
   resource,
@@ -36,13 +62,16 @@ export function EditDialog({
   open: boolean;
   resource: QdnResource | null;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (meta: { title?: string; description?: string; tags?: string[] }) => void;
 }) {
   const c = useColors();
 
-  const [mode, setMode] = useState<'file' | 'base64'>('file');
+  const [mode, setMode] = useState<'text' | 'file' | 'base64'>('file');
   const [source, setSource] = useState<PublishSource | null>(null);
   const [base64Input, setBase64Input] = useState('');
+  const [textEligible, setTextEligible] = useState<boolean | null>(null);
+  const [textContent, setTextContent] = useState('');
+  const [textLoading, setTextLoading] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -57,9 +86,41 @@ export function EditDialog({
     setTagsInput((resource.tags ?? []).join(', '));
     setSource(null);
     setBase64Input('');
+    setTextContent('');
+    setTextEligible(null);
     setMode('file');
     setSuccess(false);
     setError(null);
+
+    // Detecting text-ness needs the resource's mimeType, which the list
+    // doesn't carry - so peek at properties before deciding the default mode.
+    let cancelled = false;
+    setTextLoading(true);
+    (async () => {
+      const props = await fetchResourceProperties(resource.service, resource.name, resource.identifier);
+      if (cancelled) return;
+      const eligible = isEditableAsText(resource.service, props?.mimeType ?? undefined);
+      setTextEligible(eligible);
+      if (!eligible) {
+        setTextLoading(false);
+        return;
+      }
+      setMode('text');
+      try {
+        const raw = await fetchResourceText(resource.service, resource.name, resource.identifier);
+        if (cancelled) return;
+        let content = raw;
+        if (JSON_LIKE_SERVICES.includes(resource.service)) {
+          try { content = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* not valid JSON - show as-is */ }
+        }
+        setTextContent(content);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load current content.');
+      } finally {
+        if (!cancelled) setTextLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [open, resource]);
 
   const sourceName = source?.fileName ?? null;
@@ -91,14 +152,23 @@ export function EditDialog({
       if (mode === 'file') {
         if (!source) return;
         await publishResource({ service: resource.service, name: resource.name, source, identifier: resource.identifier, ...meta });
-      } else {
+      } else if (mode === 'base64') {
         const raw = stripDataUrlPrefix(base64Input.trim().replace(/\s/g, ''));
         if (!raw) return;
         await publishResourceBase64({ service: resource.service, name: resource.name, data64: raw, identifier: resource.identifier, ...meta });
+      } else {
+        if (!textContent.trim()) return;
+        if (JSON_LIKE_SERVICES.includes(resource.service)) {
+          try { JSON.parse(textContent); } catch {
+            setError('Invalid JSON - fix the syntax before saving.');
+            return;
+          }
+        }
+        await publishResourceBase64({ service: resource.service, name: resource.name, data64: base64FromText(textContent), identifier: resource.identifier, ...meta });
       }
 
       setSuccess(true);
-      onSuccess?.();
+      onSuccess?.(meta);
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       setError(
@@ -112,7 +182,9 @@ export function EditDialog({
   }
 
   const canSave = !publishing && (
-    mode === 'file' ? !!source : base64Input.trim().length > 0
+    mode === 'file' ? !!source :
+    mode === 'base64' ? base64Input.trim().length > 0 :
+    !textLoading && textContent.trim().length > 0
   );
 
   const tags = parseTags(tagsInput);
@@ -154,86 +226,126 @@ export function EditDialog({
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          {(['file', 'base64'] as const).map(m => (
-            <Button
-              key={m}
-              size="small"
-              onClick={() => setMode(m)}
-              sx={{
-                borderRadius: '50px',
-                fontSize: '0.75rem',
-                px: 2,
-                bgcolor: mode === m ? c.accent : 'transparent',
-                color: mode === m ? c.accentText : c.textSecondary,
-                border: `1.5px solid ${mode === m ? c.accent : c.borderLight}`,
-                '&:hover': { bgcolor: mode === m ? c.accentHover : c.borderLight },
-              }}
-            >
-              {m === 'file' ? 'Upload file' : 'Paste base64'}
-            </Button>
-          ))}
-        </Box>
-
-        {mode === 'file' ? (
-          <>
-            <Box
-              onClick={handlePickFile}
-              sx={{
-                border: `${tokens.shape.borderWidth} dashed ${c.borderLight}`,
-                borderRadius: `${tokens.shape.radius}px`,
-                bgcolor: c.surface,
-                px: 3, py: 4,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
-                cursor: 'pointer', transition: '0.15s ease',
-                '&:hover': { borderColor: c.accent, bgcolor: `${c.accent}08` },
-              }}
-            >
-              <CloudUploadIcon sx={{ fontSize: '2rem', color: source ? c.accent : c.textSecondary }} />
-              {sourceName ? (
-                <>
-                  <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
-                    {sourceName}
-                  </Typography>
-                  {sourceSize !== null && (
-                    <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary }}>
-                      {formatBytes(sourceSize)}
-                    </Typography>
-                  )}
-                </>
-              ) : (
-                <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
-                  Click to choose a replacement file
-                </Typography>
-              )}
-            </Box>
-          </>
+        {textEligible === null ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress size={20} sx={{ color: c.accent }} />
+          </Box>
         ) : (
-          <TextField
-            label="Base64 data"
-            value={base64Input}
-            onChange={e => setBase64Input(e.target.value)}
-            size="small"
-            fullWidth
-            multiline
-            minRows={4}
-            maxRows={8}
-            placeholder="Paste raw base64 or a data: URL"
-            helperText="Whitespace and data: URL prefixes are stripped automatically."
-            slotProps={{
-              inputLabel: { sx: { fontSize: '0.8rem', color: c.textSecondary } },
-              htmlInput:  { sx: { fontSize: '0.75rem', color: c.textPrimary, fontFamily: 'monospace' } },
-              formHelperText: { sx: { fontSize: '0.7rem', color: c.textSecondary } },
-            }}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                bgcolor: c.surface,
-                '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
-                '&:hover fieldset': { borderColor: c.accent },
-                '&.Mui-focused fieldset': { borderColor: c.accent },
-              },
-            }}
-          />
+          <>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {(['text', 'file', 'base64'] as const).filter(m => m !== 'text' || textEligible).map(m => (
+                <Button
+                  key={m}
+                  size="small"
+                  onClick={() => setMode(m)}
+                  sx={{
+                    borderRadius: '50px',
+                    fontSize: '0.75rem',
+                    px: 2,
+                    bgcolor: mode === m ? c.accent : 'transparent',
+                    color: mode === m ? c.accentText : c.textSecondary,
+                    border: `1.5px solid ${mode === m ? c.accent : c.borderLight}`,
+                    '&:hover': { bgcolor: mode === m ? c.accentHover : c.borderLight },
+                  }}
+                >
+                  {m === 'text' ? 'Edit text' : m === 'file' ? 'Upload file' : 'Paste base64'}
+                </Button>
+              ))}
+            </Box>
+
+            {mode === 'text' && (
+              textLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                  <CircularProgress size={20} sx={{ color: c.accent }} />
+                </Box>
+              ) : (
+                <TextField
+                  label="Content"
+                  value={textContent}
+                  onChange={e => setTextContent(e.target.value)}
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={8}
+                  maxRows={16}
+                  placeholder="Resource content"
+                  slotProps={{
+                    inputLabel: { sx: { fontSize: '0.8rem', color: c.textSecondary } },
+                    htmlInput:  { sx: { fontSize: '0.75rem', color: c.textPrimary, fontFamily: 'monospace' } },
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: c.surface,
+                      '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+                      '&:hover fieldset': { borderColor: c.accent },
+                      '&.Mui-focused fieldset': { borderColor: c.accent },
+                    },
+                  }}
+                />
+              )
+            )}
+
+            {mode === 'file' && (
+              <Box
+                onClick={handlePickFile}
+                sx={{
+                  border: `${tokens.shape.borderWidth} dashed ${c.borderLight}`,
+                  borderRadius: `${tokens.shape.radius}px`,
+                  bgcolor: c.surface,
+                  px: 3, py: 4,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+                  cursor: 'pointer', transition: '0.15s ease',
+                  '&:hover': { borderColor: c.accent, bgcolor: `${c.accent}08` },
+                }}
+              >
+                <CloudUploadIcon sx={{ fontSize: '2rem', color: source ? c.accent : c.textSecondary }} />
+                {sourceName ? (
+                  <>
+                    <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary }}>
+                      {sourceName}
+                    </Typography>
+                    {sourceSize !== null && (
+                      <Typography sx={{ fontSize: '0.72rem', color: c.textSecondary }}>
+                        {formatBytes(sourceSize)}
+                      </Typography>
+                    )}
+                  </>
+                ) : (
+                  <Typography sx={{ fontSize: '0.85rem', color: c.textSecondary }}>
+                    Click to choose a replacement file
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {mode === 'base64' && (
+              <TextField
+                label="Base64 data"
+                value={base64Input}
+                onChange={e => setBase64Input(e.target.value)}
+                size="small"
+                fullWidth
+                multiline
+                minRows={4}
+                maxRows={8}
+                placeholder="Paste raw base64 or a data: URL"
+                helperText="Whitespace and data: URL prefixes are stripped automatically."
+                slotProps={{
+                  inputLabel: { sx: { fontSize: '0.8rem', color: c.textSecondary } },
+                  htmlInput:  { sx: { fontSize: '0.75rem', color: c.textPrimary, fontFamily: 'monospace' } },
+                  formHelperText: { sx: { fontSize: '0.7rem', color: c.textSecondary } },
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    bgcolor: c.surface,
+                    '& fieldset': { borderColor: c.borderLight, borderWidth: tokens.shape.borderWidth },
+                    '&:hover fieldset': { borderColor: c.accent },
+                    '&.Mui-focused fieldset': { borderColor: c.accent },
+                  },
+                }}
+              />
+            )}
+          </>
         )}
 
         <TextField

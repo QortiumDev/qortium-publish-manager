@@ -217,6 +217,7 @@ export function MyUploadsPage() {
   const [serviceFilter, setServiceFilter] = useState('ALL');
   const [nameFilter, setNameFilter] = useState('ALL');
   const [editTarget, setEditTarget] = useState<QdnResource | null>(null);
+  const [editReturnToViewer, setEditReturnToViewer] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<QdnResource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewTarget, setViewTarget] = useState<QdnResource | null>(null);
@@ -287,6 +288,25 @@ export function MyUploadsPage() {
   function handleCloseViewer() {
     if (viewTarget) setLastViewedKey(resourceKey(viewTarget));
     setViewTarget(null);
+  }
+
+  // Editing from inside the viewer hands off to the (separate) edit dialog
+  // rather than duplicating its form there, then hands back to the viewer
+  // afterward so the "sift through and act on items" flow isn't broken.
+  function handleViewerEdit() {
+    if (!viewTarget) return;
+    setEditTarget(viewTarget);
+    setEditReturnToViewer(true);
+    setViewTarget(null);
+  }
+
+  function handleEditDialogClose() {
+    if (editReturnToViewer && editTarget) {
+      const key = resourceKey(editTarget);
+      setViewTarget(resources.find(r => resourceKey(r) === key) ?? editTarget);
+    }
+    setEditTarget(null);
+    setEditReturnToViewer(false);
   }
 
   function handleViewerNavigate(direction: 'prev' | 'next') {
@@ -578,6 +598,7 @@ export function MyUploadsPage() {
           hasNext={hasNextView}
           onPrev={() => handleViewerNavigate('prev')}
           onNext={() => handleViewerNavigate('next')}
+          onEdit={handleViewerEdit}
           ownContent
         />
       )}
@@ -585,8 +606,14 @@ export function MyUploadsPage() {
       <EditDialog
         open={!!editTarget}
         resource={editTarget}
-        onClose={() => setEditTarget(null)}
-        onSuccess={() => load(ownedNames, pageLimit)}
+        onClose={handleEditDialogClose}
+        onSuccess={meta => {
+          if (editTarget) {
+            const key = resourceKey(editTarget);
+            setResources(prev => prev.map(r => resourceKey(r) === key ? { ...r, ...meta } : r));
+          }
+          load(ownedNames, pageLimit);
+        }}
       />
 
       <PublishDialog open={publishOpen} onClose={() => setPublishOpen(false)} />

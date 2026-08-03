@@ -9,6 +9,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
@@ -24,7 +25,7 @@ import type { QdnResource } from '../types';
 import { useQdnLists } from '../hooks/useQdnLists';
 import { resourcePatterns, patternLabel } from '../lib/qdnPattern';
 
-type ViewerKind = 'image' | 'audio' | 'video' | 'text' | 'app' | 'document' | 'none';
+export type ViewerKind = 'image' | 'audio' | 'video' | 'text' | 'app' | 'document' | 'none';
 
 const KNOWN_IMAGE_SERVICES = new Set(['IMAGE', 'THUMBNAIL']);
 const KNOWN_AUDIO_SERVICES = new Set(['AUDIO']);
@@ -33,7 +34,7 @@ const KNOWN_APP_SERVICES   = new Set(['APP', 'WEBSITE']);
 const DOCUMENT_VIEWER_SERVICES = new Set(['DOCUMENT', 'FILE', 'FILES', 'ATTACHMENT']);
 const BINARY_MIME_RE = /\b(pdf|zip|tar|gz|rar|7z|exe|dll|wasm|sqlite|octet-stream)\b/i;
 
-function resolveViewerKind(service: string, mimeType?: string): ViewerKind {
+export function resolveViewerKind(service: string, mimeType?: string): ViewerKind {
   if (KNOWN_APP_SERVICES.has(service)) return 'app';
   if (mimeType) {
     if (/^image\//i.test(mimeType)) return 'image';
@@ -482,6 +483,7 @@ export function ResourceViewerDialog({
   resource,
   onClose,
   onDelete,
+  onEdit,
   hasPrev,
   hasNext,
   onPrev,
@@ -491,6 +493,7 @@ export function ResourceViewerDialog({
   resource: QdnResource;
   onClose: () => void;
   onDelete?: () => Promise<void>;
+  onEdit?: () => void;
   hasPrev?: boolean;
   hasNext?: boolean;
   onPrev?: () => void;
@@ -605,6 +608,20 @@ export function ResourceViewerDialog({
               </span>
             </Tooltip>
           </>
+        )}
+        {onEdit && (
+          <Tooltip title="Edit">
+            <span>
+              <IconButton
+                size="small"
+                disabled={deleting}
+                onClick={onEdit}
+                sx={{ color: c.textSecondary, '&:hover': { color: c.textPrimary, bgcolor: c.borderLight } }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         )}
         {onDelete && (
           <Tooltip title="Delete">
