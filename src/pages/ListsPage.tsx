@@ -15,10 +15,31 @@ import { tokens } from '../theme/tokens';
 import { getList, addToList, removeFromList } from '../api/qortal';
 import { useQdnLists } from '../hooks/useQdnLists';
 import {
-  buildPattern, patternLabel, patternScope,
+  buildPattern, parsePattern, patternLabel, patternScope,
   type PatternScope,
 } from '../lib/qdnPattern';
 import { SERVICE_TYPES } from '../types';
+
+// ─── Person pattern helpers ────────────────────────────────────────────────────
+// A "person" entry in followedQdn/blockedQdn is a pattern of the form `*/<name>`
+// (any service, any identifier) — core's ListUtils only ever reads followedQdn /
+// blockedQdn, so following or blocking "a person" is just a name-scoped pattern
+// in those same lists rather than a separate followedNames/blockedNames list.
+
+const QORT_ADDRESS_RE = /^Q[1-9A-HJ-NP-Za-km-z]{25,40}$/;
+
+function isPersonPattern(pattern: string): boolean {
+  const { service, name, identifier } = parsePattern(pattern);
+  return service === '*' && identifier === '*' && name !== '*';
+}
+
+function personPatternValue(pattern: string): string {
+  return parsePattern(pattern).name;
+}
+
+function buildPersonPattern(value: string): string {
+  return buildPattern('*', value, '');
+}
 
 // ─── Scope badge ─────────────────────────────────────────────────────────────
 
@@ -832,40 +853,33 @@ function WizardPanel({
 
 function FollowTab({
   followed,
+  loaded,
   follow,
   unfollow,
 }: {
   followed: string[];
+  loaded: boolean;
   follow: (p: string) => Promise<void>;
   unfollow: (p: string) => Promise<void>;
 }) {
   const c = useColors();
-  const [followedNames, setFollowedNames] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    getList('followedNames').then(r => { setFollowedNames(r); setLoading(false); });
-  }, []);
+  const personFollowed  = useMemo(() => followed.filter(isPersonPattern), [followed]);
+  const contentFollowed = useMemo(() => followed.filter(p => !isPersonPattern(p)), [followed]);
+  const personNames     = useMemo(() => personFollowed.map(personPatternValue), [personFollowed]);
 
   async function handleFollowPerson(name: string) {
-    await addToList('followedNames', [name]);
-    setFollowedNames(prev => [...prev, name]);
+    await follow(buildPersonPattern(name));
   }
 
-  async function handleUnfollowPerson(name: string) {
-    await removeFromList('followedNames', [name]);
-    setFollowedNames(prev => prev.filter(n => n !== name));
-  }
-
-  const totalCount = followedNames.length + followed.length;
-  const isEmpty = !loading && totalCount === 0;
+  const isEmpty = loaded && followed.length === 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <WizardPanel
         mode="follow"
-        followedNames={followedNames}
-        existingPatterns={followed}
+        followedNames={personNames}
+        existingPatterns={contentFollowed}
         blockedNames={[]} blockedAddresses={[]} blockedChatNames={[]} blockedChatAddresses={[]}
         onFollowPerson={handleFollowPerson}
         onFollowPattern={follow}
@@ -873,7 +887,7 @@ function FollowTab({
         onBlockPattern={async () => {}}
       />
 
-      {loading ? (
+      {!loaded ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
           <CircularProgress size={20} sx={{ color: c.accent }} />
         </Box>
@@ -889,14 +903,14 @@ function FollowTab({
         </Box>
       ) : (
         <>
-          {followedNames.map(name => (
+          {personFollowed.map(pattern => (
             <PersonFollowItem
-              key={name}
-              name={name}
-              onRemove={() => handleUnfollowPerson(name)}
+              key={pattern}
+              name={personPatternValue(pattern)}
+              onRemove={() => unfollow(pattern)}
             />
           ))}
-          {followed.map(pattern => (
+          {contentFollowed.map(pattern => (
             <PatternItem
               key={pattern}
               pattern={pattern}
@@ -939,34 +953,41 @@ function mergePersonBlocks(
 
 function BlockTab({
   blocked,
+  loaded,
   block,
   unblock,
 }: {
   blocked: string[];
+  loaded: boolean;
   block: (p: string) => Promise<void>;
   unblock: (p: string) => Promise<void>;
 }) {
   const c = useColors();
-  const [blockedNames,        setBlockedNames]        = useState<string[]>([]);
-  const [blockedAddresses,    setBlockedAddresses]    = useState<string[]>([]);
   const [blockedChatNames,    setBlockedChatNames]    = useState<string[]>([]);
   const [blockedChatAddresses,setBlockedChatAddresses]= useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [chatLoading, setChatLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      getList('blockedNames'),
-      getList('blockedAddresses'),
       getList('blockedChatNames'),
       getList('blockedChatAddresses'),
-    ]).then(([bn, ba, bcn, bca]) => {
-      setBlockedNames(bn);
-      setBlockedAddresses(ba);
+    ]).then(([bcn, bca]) => {
       setBlockedChatNames(bcn);
       setBlockedChatAddresses(bca);
-      setLoading(false);
+      setChatLoading(false);
     });
   }, []);
+
+  const personBlockedPatterns = useMemo(() => blocked.filter(isPersonPattern), [blocked]);
+  const contentBlocked        = useMemo(() => blocked.filter(p => !isPersonPattern(p)), [blocked]);
+  const blockedNames = useMemo(
+    () => personBlockedPatterns.map(personPatternValue).filter(v => !QORT_ADDRESS_RE.test(v)),
+    [personBlockedPatterns],
+  );
+  const blockedAddresses = useMemo(
+    () => personBlockedPatterns.map(personPatternValue).filter(v => QORT_ADDRESS_RE.test(v)),
+    [personBlockedPatterns],
+  );
 
   const personBlocks = useMemo(
     () => mergePersonBlocks(blockedNames, blockedAddresses, blockedChatNames, blockedChatAddresses),
@@ -974,14 +995,10 @@ function BlockTab({
   );
 
   async function handleBlockPerson(value: string, isAddress: boolean, content: boolean, chat: boolean) {
-    const adds: Promise<boolean>[] = [];
-    if (content) adds.push(addToList(isAddress ? 'blockedAddresses' : 'blockedNames', [value]));
+    const adds: Promise<unknown>[] = [];
+    if (content) adds.push(block(buildPersonPattern(value)));
     if (chat)    adds.push(addToList(isAddress ? 'blockedChatAddresses' : 'blockedChatNames', [value]));
     await Promise.all(adds);
-    if (content) {
-      if (isAddress) setBlockedAddresses(prev => [...prev, value]);
-      else           setBlockedNames(prev => [...prev, value]);
-    }
     if (chat) {
       if (isAddress) setBlockedChatAddresses(prev => [...prev, value]);
       else           setBlockedChatNames(prev => [...prev, value]);
@@ -989,29 +1006,26 @@ function BlockTab({
   }
 
   async function handleRemoveBadge(entry: PersonBlockEntry, which: 'content' | 'chat' | 'all') {
-    const removes: Promise<boolean>[] = [];
+    const removes: Promise<unknown>[] = [];
     const removeContent = which === 'content' || which === 'all';
     const removeChat    = which === 'chat'    || which === 'all';
 
     if (removeContent && entry.blockedContent) {
-      removes.push(removeFromList(entry.isAddress ? 'blockedAddresses' : 'blockedNames', [entry.value]));
+      removes.push(unblock(buildPersonPattern(entry.value)));
     }
     if (removeChat && entry.blockedChat) {
       removes.push(removeFromList(entry.isAddress ? 'blockedChatAddresses' : 'blockedChatNames', [entry.value]));
     }
     await Promise.all(removes);
 
-    if (removeContent && entry.blockedContent) {
-      if (entry.isAddress) setBlockedAddresses(prev => prev.filter(v => v !== entry.value));
-      else                 setBlockedNames(prev => prev.filter(v => v !== entry.value));
-    }
     if (removeChat && entry.blockedChat) {
       if (entry.isAddress) setBlockedChatAddresses(prev => prev.filter(v => v !== entry.value));
       else                 setBlockedChatNames(prev => prev.filter(v => v !== entry.value));
     }
   }
 
-  const totalCount = personBlocks.length + blocked.length;
+  const loading = !loaded || chatLoading;
+  const totalCount = personBlocks.length + contentBlocked.length;
   const isEmpty = !loading && totalCount === 0;
 
   return (
@@ -1019,7 +1033,7 @@ function BlockTab({
       <WizardPanel
         mode="block"
         followedNames={[]}
-        existingPatterns={blocked}
+        existingPatterns={contentBlocked}
         blockedNames={blockedNames}
         blockedAddresses={blockedAddresses}
         blockedChatNames={blockedChatNames}
@@ -1053,7 +1067,7 @@ function BlockTab({
               onRemoveBadge={which => handleRemoveBadge(entry, which)}
             />
           ))}
-          {blocked.map(pattern => (
+          {contentBlocked.map(pattern => (
             <PatternItem
               key={pattern}
               pattern={pattern}
@@ -1071,7 +1085,7 @@ function BlockTab({
 
 export function ListsPage() {
   const c = useColors();
-  const { blocked, followed, block, unblock, follow, unfollow } = useQdnLists();
+  const { blocked, followed, loaded, block, unblock, follow, unfollow } = useQdnLists();
   const [tab, setTab] = useState(0);
 
   return (
@@ -1130,6 +1144,7 @@ export function ListsPage() {
       {tab === 0 && (
         <FollowTab
           followed={followed}
+          loaded={loaded}
           follow={follow}
           unfollow={unfollow}
         />
@@ -1137,6 +1152,7 @@ export function ListsPage() {
       {tab === 1 && (
         <BlockTab
           blocked={blocked}
+          loaded={loaded}
           block={block}
           unblock={unblock}
         />

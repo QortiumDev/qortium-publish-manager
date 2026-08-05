@@ -38,8 +38,8 @@ export function TopBar() {
   const isClassic = uiStyle === 'classic';
 
   useEffect(() => {
-    qdnRequest({ action: 'GET_LIST', listName: 'followedNames' })
-      .then((list) => { setIsFollowed(Array.isArray(list) && (list as string[]).includes(APP_QDN_NAME)); })
+    qdnRequest({ action: 'GET_LIST', listName: 'followedQdn' })
+      .then((list) => { setIsFollowed(Array.isArray(list) && (list as string[]).includes(`*/${APP_QDN_NAME}`)); })
       .catch(() => {});
   }, []);
 
@@ -70,10 +70,10 @@ export function TopBar() {
     setFollowBusy(true);
     try {
       if (isFollowed) {
-        await qdnRequest({ action: 'REMOVE_FROM_LIST', listName: 'followedNames', items: [APP_QDN_NAME] });
+        await qdnRequest({ action: 'REMOVE_FROM_LIST', listName: 'followedQdn', items: [`*/${APP_QDN_NAME}`] });
         setIsFollowed(false);
       } else {
-        await qdnRequest({ action: 'ADD_TO_LIST', listName: 'followedNames', items: [APP_QDN_NAME] });
+        await qdnRequest({ action: 'ADD_TO_LIST', listName: 'followedQdn', items: [`*/${APP_QDN_NAME}`] });
         setIsFollowed(true);
       }
     } catch {}
