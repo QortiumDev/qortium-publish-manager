@@ -10,15 +10,22 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import LinkIcon from '@mui/icons-material/Link';
 import CheckIcon from '@mui/icons-material/Check';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import { useAtomValue } from 'jotai';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
-import { listResources, deleteResource, ensureAccountUnlocked, getNamesByAddress } from '../api/qortal';
+import { searchResources, deleteResource, ensureAccountUnlocked, getNamesByAddress } from '../api/qortal';
 import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
 import { PublishDialog } from './PublishPage';
 import { EditDialog } from './EditDialog';
-import type { QdnResource } from '../types';
+import { SERVICE_TYPES, type QdnResource } from '../types';
+
+const THUMBNAIL_SERVICES = new Set(['IMAGE', 'THUMBNAIL', 'GIF_REPOSITORY']);
+
+function resourceThumbnailUrl(r: QdnResource): string {
+  return `/arbitrary/${r.service}/${encodeURIComponent(r.name)}/${encodeURIComponent(r.identifier)}`;
+}
 
 async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
@@ -83,6 +90,8 @@ function UploadRow({
 }) {
   const c = useColors();
   const [copied, setCopied] = useState(false);
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const showThumb = THUMBNAIL_SERVICES.has(r.service) && !thumbFailed;
 
   async function handleCopyLink(e: React.MouseEvent) {
     e.stopPropagation();
@@ -120,17 +129,31 @@ function UploadRow({
         }}
       />
 
-      <Box
-        sx={{
-          fontSize: '0.6rem', fontWeight: tokens.typography.weightBold,
-          letterSpacing: '0.1em', textTransform: 'uppercase',
-          bgcolor: c.borderLight, color: c.textSecondary,
-          px: 1, py: 0.25, borderRadius: '4px', whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
-        {r.service}
-      </Box>
+      {showThumb ? (
+        <Box
+          component="img"
+          src={resourceThumbnailUrl(r)}
+          alt=""
+          loading="lazy"
+          onError={() => setThumbFailed(true)}
+          sx={{
+            width: 34, height: 34, borderRadius: '6px', objectFit: 'cover',
+            flexShrink: 0, bgcolor: c.borderLight,
+          }}
+        />
+      ) : (
+        <Box
+          sx={{
+            fontSize: '0.6rem', fontWeight: tokens.typography.weightBold,
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+            bgcolor: c.borderLight, color: c.textSecondary,
+            px: 1, py: 0.25, borderRadius: '4px', whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          {r.service}
+        </Box>
+      )}
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontSize: '0.85rem', fontWeight: tokens.typography.weightBold, color: c.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -228,20 +251,43 @@ export function MyUploadsPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Paging in a long list (and the delete flow) can leave the user scrolled
+  // far down - a fixed "back to top" button beats hunting for a scrollbar.
+  useEffect(() => {
+    function onScroll() { setShowScrollTop(window.scrollY > 480); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Every publish type (service) is applicable to every registered name, so
   // resources are fetched across ALL of the user's owned names at once -
   // "My Publishes" should show everything, not just one name at a time.
   // Fetched in pages (limit grows by PAGE_SIZE per "Load more" click) rather
   // than all at once, since some accounts may have a very large publish history.
-  const load = useCallback(async (names: string[], limit: number, background = false) => {
+  //
+  // Uses SEARCH_QDN_RESOURCES (mode=ALL), not LIST_QDN_RESOURCES: the core
+  // only orders LIST_QDN_RESOURCES by name, never by publish time, so once
+  // filtered to a single name every row ties on that sort key and the actual
+  // order falls back to arbitrary DB scan order. The newest publish wouldn't
+  // reliably appear until every one of that name's resources had been paged
+  // in. SEARCH_QDN_RESOURCES orders by created_when for real, so the first
+  // page already contains the newest items.
+  const load = useCallback(async (names: string[], limit: number, service: string, background = false) => {
     if (names.length === 0) return;
     if (background) setLoadingMore(true); else setLoading(true);
-    const results = await Promise.all(names.map(n => listResources(n, undefined, 0, limit)));
+    const results = await Promise.all(names.map(n => searchResources({
+      name: n,
+      exactMatchNames: true,
+      mode: 'ALL',
+      service: service === 'ALL' ? undefined : service,
+      limit,
+      offset: 0,
+    })));
     // A name whose page came back full may still have more beyond this limit.
     setHasMore(results.some(r => r.length === limit));
-    // LIST_QDN_RESOURCES orders by name, not by created_when, so sort by recency ourselves.
     setResources(results.flat().sort((a, b) => (b.created ?? 0) - (a.created ?? 0)));
     if (background) setLoadingMore(false); else setLoading(false);
   }, []);
@@ -251,22 +297,33 @@ export function MyUploadsPage() {
     getNamesByAddress(account.address).then(names => {
       setOwnedNames(names);
       setPageLimit(PAGE_SIZE);
-      load(names, PAGE_SIZE);
+      setServiceFilter('ALL');
+      load(names, PAGE_SIZE, 'ALL');
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.address, load]);
 
   const loadMore = useCallback(() => {
     const next = pageLimit + PAGE_SIZE;
     setPageLimit(next);
-    load(ownedNames, next, true);
-  }, [pageLimit, ownedNames, load]);
+    load(ownedNames, next, serviceFilter, true);
+  }, [pageLimit, ownedNames, serviceFilter, load]);
 
-  const serviceTypes = ['ALL', ...Array.from(new Set(resources.map(r => r.service))).sort()];
+  // Switching service type re-fetches scoped to that type, correctly ordered
+  // newest-first, rather than filtering whatever partial page happened to
+  // already be loaded under the old (unscoped) fetch.
+  function handleServiceFilterChange(s: string) {
+    setServiceFilter(s);
+    setPageLimit(PAGE_SIZE);
+    load(ownedNames, PAGE_SIZE, s);
+  }
 
-  const filtered = resources.filter(r =>
-    (serviceFilter === 'ALL' || r.service === serviceFilter) &&
-    (nameFilter === 'ALL' || r.name === nameFilter)
-  );
+  // Every publishable service type is always offered as a filter chip, not
+  // just the ones present in the currently loaded page, so a type with zero
+  // (or not-yet-loaded) publishes is still selectable.
+  const serviceTypes = ['ALL', ...SERVICE_TYPES.map(s => s.value)];
+
+  const filtered = resources.filter(r => nameFilter === 'ALL' || r.name === nameFilter);
 
   // Selection is scoped to the currently filtered view, so a filter change
   // clears it rather than leaving an invisible, stale count behind.
@@ -447,7 +504,7 @@ export function MyUploadsPage() {
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Refresh">
           <IconButton
-            onClick={() => load(ownedNames, pageLimit)}
+            onClick={() => load(ownedNames, pageLimit, serviceFilter)}
             disabled={loading || ownedNames.length === 0}
             sx={{ borderRadius: `${tokens.shape.radius}px`, color: c.textSecondary, '&:hover': { color: c.accent, bgcolor: c.borderLight } }}
           >
@@ -464,27 +521,25 @@ export function MyUploadsPage() {
         </Tooltip>
       </Box>
 
-      {serviceTypes.length > 1 && (
-        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 2.5 }}>
-          {serviceTypes.map(s => (
-            <Chip
-              key={s}
-              label={s}
-              size="small"
-              onClick={() => setServiceFilter(s)}
-              sx={{
-                fontSize: '0.65rem', fontWeight: tokens.typography.weightBold, letterSpacing: '0.08em',
-                textTransform: 'uppercase', borderRadius: '50px',
-                bgcolor: serviceFilter === s ? c.accent : 'transparent',
-                color: serviceFilter === s ? c.accentText : c.textSecondary,
-                border: `1.5px solid ${serviceFilter === s ? c.accent : c.borderLight}`,
-                cursor: 'pointer',
-                '&:hover': { bgcolor: serviceFilter === s ? c.accentHover : c.borderLight },
-              }}
-            />
-          ))}
-        </Box>
-      )}
+      <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 2.5 }}>
+        {serviceTypes.map(s => (
+          <Chip
+            key={s}
+            label={s}
+            size="small"
+            onClick={() => handleServiceFilterChange(s)}
+            sx={{
+              fontSize: '0.65rem', fontWeight: tokens.typography.weightBold, letterSpacing: '0.08em',
+              textTransform: 'uppercase', borderRadius: '50px',
+              bgcolor: serviceFilter === s ? c.accent : 'transparent',
+              color: serviceFilter === s ? c.accentText : c.textSecondary,
+              border: `1.5px solid ${serviceFilter === s ? c.accent : c.borderLight}`,
+              cursor: 'pointer',
+              '&:hover': { bgcolor: serviceFilter === s ? c.accentHover : c.borderLight },
+            }}
+          />
+        ))}
+      </Box>
 
       {selected.size > 0 && (
         <Box
@@ -589,6 +644,22 @@ export function MyUploadsPage() {
         </Typography>
       )}
 
+      {showScrollTop && (
+        <Tooltip title="Back to top">
+          <IconButton
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            sx={{
+              position: 'fixed', bottom: 24, right: 24, zIndex: 20,
+              bgcolor: c.accent, color: c.accentText,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+              '&:hover': { bgcolor: c.accentHover },
+            }}
+          >
+            <ArrowUpwardIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
+
       {viewTarget && (
         <ResourceViewerDialog
           resource={viewTarget}
@@ -612,7 +683,7 @@ export function MyUploadsPage() {
             const key = resourceKey(editTarget);
             setResources(prev => prev.map(r => resourceKey(r) === key ? { ...r, ...meta } : r));
           }
-          load(ownedNames, pageLimit);
+          load(ownedNames, pageLimit, serviceFilter);
         }}
       />
 

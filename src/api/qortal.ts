@@ -32,21 +32,6 @@ function normalizeResource(raw: RawQdnResource): QdnResource {
   };
 }
 
-export async function listResources(name: string, service?: string, offset = 0, limit = 100): Promise<QdnResource[]> {
-  try {
-    const res = await qdnRequest({
-      action: 'LIST_QDN_RESOURCES',
-      name,
-      includeMetadata: true,
-      limit,
-      offset,
-      reverse: true,
-      ...(service ? { service } : {}),
-    }) as RawQdnResource[];
-    return (res ?? []).map(normalizeResource);
-  } catch { return []; }
-}
-
 // Returns null if user canceled, throws if the action is not supported (caller should fall back to in-page picker).
 export async function selectPublishSource(): Promise<PublishSource | null> {
   const res = await qdnRequest({ action: 'SELECT_QDN_PUBLISH_SOURCE', kind: 'file' }) as {
@@ -252,19 +237,28 @@ export async function fetchResourceProperties(
 export async function searchResources(opts: {
   service?: string;
   query?: string;
+  name?: string;
+  exactMatchNames?: boolean;
+  // LATEST collapses to one row per name+service (good for browsing); ALL
+  // returns every identifier, correctly ordered by created_when - unlike
+  // LIST_QDN_RESOURCES, which only orders by name and is meaningless for a
+  // single-name filter (see MyUploadsPage for why that matters).
+  mode?: 'ALL' | 'LATEST';
   limit?: number;
   offset?: number;
 }): Promise<QdnResource[]> {
   try {
     const res = await qdnRequest({
       action: 'SEARCH_QDN_RESOURCES',
-      mode: 'LATEST',
+      mode: opts.mode ?? 'LATEST',
       includeMetadata: true,
       limit: opts.limit ?? 20,
       offset: opts.offset ?? 0,
       reverse: true,
       ...(opts.service ? { service: opts.service } : {}),
       ...(opts.query   ? { query: opts.query }     : {}),
+      ...(opts.name    ? { name: opts.name }       : {}),
+      ...(opts.exactMatchNames ? { exactMatchNames: true } : {}),
     }) as RawQdnResource[];
     return (res ?? []).map(normalizeResource);
   } catch { return []; }
