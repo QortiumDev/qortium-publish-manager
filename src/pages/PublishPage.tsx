@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, MenuItem,
   CircularProgress, Chip, FormControlLabel, Checkbox,
@@ -227,6 +228,7 @@ function NameAvatarSection({ name }: { name: string }) {
 export function PublishDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const c = useColors();
   const account = useAtomValue(accountAtom);
+  const [searchParams] = useSearchParams();
 
   const [service, setService] = useAtom(publishServiceAtom);
   const [selectedName, setSelectedName] = useState<string>('');
@@ -240,6 +242,29 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [publishing, setPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const appliedUrlPrefill = useRef(false);
+
+  // Lets other apps deep-link straight into a pre-filled publish draft, e.g.
+  // Apps linking in with ?publish=1&publishService=APP to start a new app
+  // publish with the service type already selected. Applied once on mount
+  // so it seeds the draft without fighting the user's own subsequent edits.
+  useEffect(() => {
+    if (appliedUrlPrefill.current) return;
+    appliedUrlPrefill.current = true;
+    const svc  = searchParams.get('publishService');
+    const id   = searchParams.get('publishIdentifier');
+    const t    = searchParams.get('publishTitle');
+    const desc = searchParams.get('publishDescription');
+    const tags = searchParams.get('publishTags');
+    const zip  = searchParams.get('publishZip');
+    if (svc && SERVICE_TYPES.some(s => s.value === svc)) setService(svc);
+    if (id)   setIdentifier(clampIdentifierBytes(id));
+    if (t)    setTitle(t.slice(0, 80));
+    if (desc) setDescription(desc.slice(0, 240));
+    if (tags) setTagsInput(tags);
+    if (zip === '1') setIsMultiFileZip(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sourceName = source?.fileName ?? null;
   const sourceSize = source?.size ?? null;
@@ -266,7 +291,10 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (!open || !account?.address) return;
     getNamesByAddress(account.address).then(names => {
       setOwnedNames(names);
-      if (names.length > 0 && !names.includes(selectedName)) {
+      const wanted = searchParams.get('publishAs');
+      if (wanted && names.includes(wanted)) {
+        if (selectedName !== wanted) setSelectedName(wanted);
+      } else if (names.length > 0 && !names.includes(selectedName)) {
         setSelectedName(names[0]);
       }
     });
