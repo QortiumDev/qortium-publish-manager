@@ -275,15 +275,28 @@ export function MyUploadsPage() {
   }, []);
 
   // Keep the URL in sync with filters and which dialog (if any) is open, so
-  // every page state / dialog combo is a shareable, reloadable link.
+  // every page state / dialog combo is a shareable, reloadable link. Only
+  // ever touches the keys this page owns - the publish dialog manages its
+  // own `publish*` draft params independently, so they're left alone here
+  // rather than being wiped out on every filter change.
   useEffect(() => {
-    const next = new URLSearchParams();
-    if (serviceFilter !== 'ALL') next.set('service', serviceFilter);
-    if (nameFilter !== 'ALL') next.set('name', nameFilter);
-    if (viewTarget) next.set('resource', buildPattern(viewTarget.service, viewTarget.name, viewTarget.identifier));
-    else if (editTarget) next.set('edit', buildPattern(editTarget.service, editTarget.name, editTarget.identifier));
-    if (publishOpen) next.set('publish', '1');
-    setSearchParams(next, { replace: true });
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (serviceFilter !== 'ALL') next.set('service', serviceFilter); else next.delete('service');
+      if (nameFilter !== 'ALL') next.set('name', nameFilter); else next.delete('name');
+      if (viewTarget) {
+        next.set('resource', buildPattern(viewTarget.service, viewTarget.name, viewTarget.identifier));
+        next.delete('edit');
+      } else if (editTarget) {
+        next.set('edit', buildPattern(editTarget.service, editTarget.name, editTarget.identifier));
+        next.delete('resource');
+      } else {
+        next.delete('resource');
+        next.delete('edit');
+      }
+      if (publishOpen) next.set('publish', '1'); else next.delete('publish');
+      return next;
+    }, { replace: true });
   }, [serviceFilter, nameFilter, viewTarget, editTarget, publishOpen, setSearchParams]);
 
   // Paging in a long list (and the delete flow) can leave the user scrolled

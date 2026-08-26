@@ -228,7 +228,7 @@ function NameAvatarSection({ name }: { name: string }) {
 export function PublishDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const c = useColors();
   const account = useAtomValue(accountAtom);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [service, setService] = useAtom(publishServiceAtom);
   const [selectedName, setSelectedName] = useState<string>('');
@@ -265,6 +265,29 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (zip === '1') setIsMultiFileZip(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Mirror the draft back into the URL as it's edited, so filling out the
+  // form and copying the address bar produces a working ?publish* deep link
+  // (e.g. to hand to another app) without having to build the query by hand.
+  // Only touches its own `publish*` keys - MyUploadsPage owns the rest.
+  useEffect(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (!open) {
+        ['publishService', 'publishIdentifier', 'publishTitle', 'publishDescription', 'publishTags', 'publishZip', 'publishAs']
+          .forEach(k => next.delete(k));
+        return next;
+      }
+      if (service !== 'ARBITRARY_DATA') next.set('publishService', service); else next.delete('publishService');
+      if (identifier) next.set('publishIdentifier', identifier); else next.delete('publishIdentifier');
+      if (title) next.set('publishTitle', title); else next.delete('publishTitle');
+      if (description) next.set('publishDescription', description); else next.delete('publishDescription');
+      if (tagsInput) next.set('publishTags', tagsInput); else next.delete('publishTags');
+      if (isMultiFileZip) next.set('publishZip', '1'); else next.delete('publishZip');
+      if (selectedName) next.set('publishAs', selectedName); else next.delete('publishAs');
+      return next;
+    }, { replace: true });
+  }, [open, service, identifier, title, description, tagsInput, isMultiFileZip, selectedName, setSearchParams]);
 
   const sourceName = source?.fileName ?? null;
   const sourceSize = source?.size ?? null;
