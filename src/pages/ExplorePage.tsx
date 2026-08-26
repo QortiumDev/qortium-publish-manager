@@ -20,7 +20,7 @@ import { searchResources, fetchResourceAsBase64, getResource } from '../api/qort
 import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
 import type { QdnResource } from '../types';
 import { useQdnLists } from '../hooks/useQdnLists';
-import { resourcePatterns } from '../lib/qdnPattern';
+import { buildPattern, parsePattern, resourcePatterns } from '../lib/qdnPattern';
 
 const PAGE_SIZE = 20;
 
@@ -416,18 +416,17 @@ function ResourceRow({
 
 export function ExplorePage() {
   const c = useColors();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const initialName       = searchParams.get('name') ?? '';
-  const initialService    = searchParams.get('service') ?? '';
-  const initialIdentifier = searchParams.get('identifier') ?? '';
-  const isDirectLink = !!(initialName && initialService && initialIdentifier);
+  const initialResource = searchParams.get('resource') ?? '';
+  const isDirectLink = !!initialResource;
+  const directLinkParts = isDirectLink ? parsePattern(initialResource) : null;
 
   const didInit = useRef(false);
 
-  const [serviceFilter, setServiceFilter]     = useState(isDirectLink ? initialService : 'ALL');
-  const [queryInput, setQueryInput]           = useState(initialName);
-  const [activeQuery, setActiveQuery]         = useState(initialName);
+  const [serviceFilter, setServiceFilter]     = useState(() => searchParams.get('service') ?? directLinkParts?.service ?? 'ALL');
+  const [queryInput, setQueryInput]           = useState(() => searchParams.get('q') ?? '');
+  const [activeQuery, setActiveQuery]         = useState(() => searchParams.get('q') ?? '');
   const [viewingDirectLink, setViewingDirectLink] = useState(isDirectLink);
 
   const [results, setResults]         = useState<QdnResource[]>([]);
@@ -463,18 +462,29 @@ export function ExplorePage() {
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
-    if (isDirectLink) {
+    if (isDirectLink && directLinkParts) {
       setLoading(true);
-      getResource(initialService, initialName, initialIdentifier).then(r => {
+      getResource(directLinkParts.service, directLinkParts.name, directLinkParts.identifier).then(r => {
         setResults(r ? [r] : []);
         setHasMore(false);
         setLoading(false);
+        if (r) setViewTarget(r);
       });
     } else {
-      void doSearch('ALL', initialName, true);
+      void doSearch(serviceFilter, queryInput, true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the URL in sync with the browse filter, search text, and whichever
+  // resource is open in the viewer, so any combination is a shareable link.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (serviceFilter !== 'ALL') next.set('service', serviceFilter);
+    if (activeQuery) next.set('q', activeQuery);
+    if (viewTarget) next.set('resource', buildPattern(viewTarget.service, viewTarget.name, viewTarget.identifier));
+    setSearchParams(next, { replace: true });
+  }, [serviceFilter, activeQuery, viewTarget, setSearchParams]);
 
   function handleServiceChange(s: string) {
     setServiceFilter(s);
@@ -590,6 +600,7 @@ export function ExplorePage() {
               setServiceFilter('ALL');
               setQueryInput('');
               setActiveQuery('');
+              setViewTarget(null);
               void doSearch('ALL', '', true);
             }}
             sx={{ fontSize: '0.65rem', color: c.accent, minWidth: 0, p: '2px 8px', borderRadius: '50px', '&:hover': { bgcolor: `${c.accent}20` } }}

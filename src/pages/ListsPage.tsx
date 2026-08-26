@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box, Button, Chip, CircularProgress, IconButton,
   MenuItem, Select, TextField, Tooltip, Typography, Tab, Tabs,
@@ -1083,10 +1084,21 @@ function BlockTab({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const TABS = ['following', 'blocking'] as const;
+
 export function ListsPage() {
   const c = useColors();
   const { blocked, followed, loaded, block, unblock, follow, unfollow } = useQdnLists();
-  const [tab, setTab] = useState(0);
+  const navigate = useNavigate();
+  const { tab: tabParam } = useParams<{ tab: string }>();
+
+  useEffect(() => {
+    if (!tabParam || !TABS.includes(tabParam as typeof TABS[number])) {
+      navigate('/lists/following', { replace: true });
+    }
+  }, [tabParam, navigate]);
+
+  const tab = tabParam === 'blocking' ? 1 : 0;
 
   return (
     <Box sx={{
@@ -1106,7 +1118,7 @@ export function ListsPage() {
 
       <Tabs
         value={tab}
-        onChange={(_, v) => setTab(v)}
+        onChange={(_, v) => navigate(`/lists/${TABS[v]}`)}
         sx={{
           mb: 3,
           '& .MuiTabs-indicator': { bgcolor: c.accent },

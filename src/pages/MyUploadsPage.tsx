@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, IconButton,
   Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -15,10 +16,11 @@ import { useAtomValue } from 'jotai';
 import { useColors } from '../theme/ColorTokensContext';
 import { tokens } from '../theme/tokens';
 import { accountAtom } from '../state/atoms';
-import { searchResources, deleteResource, ensureAccountUnlocked, getNamesByAddress } from '../api/qortal';
+import { searchResources, deleteResource, ensureAccountUnlocked, getNamesByAddress, getResource } from '../api/qortal';
 import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
 import { PublishDialog } from './PublishPage';
 import { EditDialog } from './EditDialog';
+import { buildPattern, parsePattern } from '../lib/qdnPattern';
 import { SERVICE_TYPES, type QdnResource } from '../types';
 
 const THUMBNAIL_SERVICES = new Set(['IMAGE', 'THUMBNAIL', 'GIF_REPOSITORY']);
@@ -231,21 +233,22 @@ function UploadRow({
 export function MyUploadsPage() {
   const c = useColors();
   const account = useAtomValue(accountAtom);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [resources, setResources] = useState<QdnResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
-  const [serviceFilter, setServiceFilter] = useState('ALL');
-  const [nameFilter, setNameFilter] = useState('ALL');
+  const [serviceFilter, setServiceFilter] = useState(() => searchParams.get('service') ?? 'ALL');
+  const [nameFilter, setNameFilter] = useState(() => searchParams.get('name') ?? 'ALL');
   const [editTarget, setEditTarget] = useState<QdnResource | null>(null);
   const [editReturnToViewer, setEditReturnToViewer] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<QdnResource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [viewTarget, setViewTarget] = useState<QdnResource | null>(null);
   const [lastViewedKey, setLastViewedKey] = useState<string | null>(null);
-  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(() => searchParams.get('publish') === '1');
   const [ownedNames, setOwnedNames] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -253,6 +256,35 @@ export function MyUploadsPage() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const didLoadAccount = useRef(false);
+
+  // Deep link into the viewer/edit dialog on first mount, resolved via a
+  // direct fetch rather than depending on the resource being in the
+  // currently-loaded/filtered page (it may not be, e.g. across a reload).
+  useEffect(() => {
+    const resourceParam = searchParams.get('resource');
+    const editParam = searchParams.get('edit');
+    const pattern = resourceParam ?? editParam;
+    if (!pattern) return;
+    const { service, name, identifier } = parsePattern(pattern);
+    getResource(service, name, identifier).then(r => {
+      if (!r) return;
+      if (resourceParam) setViewTarget(r); else setEditTarget(r);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the URL in sync with filters and which dialog (if any) is open, so
+  // every page state / dialog combo is a shareable, reloadable link.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (serviceFilter !== 'ALL') next.set('service', serviceFilter);
+    if (nameFilter !== 'ALL') next.set('name', nameFilter);
+    if (viewTarget) next.set('resource', buildPattern(viewTarget.service, viewTarget.name, viewTarget.identifier));
+    else if (editTarget) next.set('edit', buildPattern(editTarget.service, editTarget.name, editTarget.identifier));
+    if (publishOpen) next.set('publish', '1');
+    setSearchParams(next, { replace: true });
+  }, [serviceFilter, nameFilter, viewTarget, editTarget, publishOpen, setSearchParams]);
 
   // Paging in a long list (and the delete flow) can leave the user scrolled
   // far down - a fixed "back to top" button beats hunting for a scrollbar.
@@ -297,8 +329,12 @@ export function MyUploadsPage() {
     getNamesByAddress(account.address).then(names => {
       setOwnedNames(names);
       setPageLimit(PAGE_SIZE);
-      setServiceFilter('ALL');
-      load(names, PAGE_SIZE, 'ALL');
+      // Honor a URL-provided ?service= filter on first load; a later account
+      // switch (not a fresh page load) still resets to showing everything.
+      const initialService = didLoadAccount.current ? 'ALL' : serviceFilter;
+      if (didLoadAccount.current) setServiceFilter('ALL');
+      didLoadAccount.current = true;
+      load(names, PAGE_SIZE, initialService);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.address, load]);
