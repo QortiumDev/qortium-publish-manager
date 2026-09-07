@@ -21,7 +21,7 @@ import { ResourceViewerDialog } from '../components/ResourceViewerDialog';
 import { PublishDialog } from './PublishPage';
 import { EditDialog } from './EditDialog';
 import { buildPattern, parsePattern } from '../lib/qdnPattern';
-import { SERVICE_TYPES, type QdnResource } from '../types';
+import { DEFAULT_SERVICE_TYPES, type QdnResource } from '../types';
 
 const THUMBNAIL_SERVICES = new Set(['IMAGE', 'THUMBNAIL', 'GIF_REPOSITORY']);
 
@@ -370,7 +370,7 @@ export function MyUploadsPage() {
   // Every publishable service type is always offered as a filter chip, not
   // just the ones present in the currently loaded page, so a type with zero
   // (or not-yet-loaded) publishes is still selectable.
-  const serviceTypes = ['ALL', ...SERVICE_TYPES.map(s => s.value)];
+  const serviceTypes = ['ALL', ...DEFAULT_SERVICE_TYPES.map(s => s.value)];
 
   const filtered = resources.filter(r => nameFilter === 'ALL' || r.name === nameFilter);
 

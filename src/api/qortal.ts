@@ -1,4 +1,4 @@
-import type { PublishSource, QdnResource } from '../types';
+import type { ArbitraryServiceInfo, PublishSource, QdnResource } from '../types';
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -39,6 +39,12 @@ export async function selectPublishSource(): Promise<PublishSource | null> {
   };
   if (res.canceled || !res.sourceToken) return null;
   return { kind: 'token', fileName: res.fileName ?? '', size: res.size ?? 0, sourceToken: res.sourceToken };
+}
+
+export async function fetchServiceTypes(): Promise<ArbitraryServiceInfo[]> {
+  const res = await fetch('/arbitrary/services');
+  if (!res.ok) throw new Error(`Failed to fetch service types: ${res.status}`);
+  return res.json();
 }
 
 export async function getNamesByAddress(address: string): Promise<string[]> {

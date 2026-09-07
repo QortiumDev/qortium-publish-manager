@@ -19,7 +19,7 @@ import {
   buildPattern, parsePattern, patternLabel, patternScope,
   type PatternScope,
 } from '../lib/qdnPattern';
-import { SERVICE_TYPES } from '../types';
+import { DEFAULT_SERVICE_TYPES } from '../types';
 
 // ─── Person pattern helpers ────────────────────────────────────────────────────
 // A "person" entry in followedQdn/blockedQdn is a pattern of the form `*/<name>`
@@ -360,7 +360,7 @@ function ContentPatternWizard({
           <MenuItem value="*" sx={{ fontSize: '0.82rem', fontStyle: 'italic', color: c.textSecondary }}>
             Any type
           </MenuItem>
-          {SERVICE_TYPES.map(st => (
+          {DEFAULT_SERVICE_TYPES.map(st => (
             <MenuItem key={st.value} value={st.value} sx={{ fontSize: '0.82rem' }}>
               {st.label}
             </MenuItem>

@@ -18,8 +18,8 @@ import {
   publishTitleAtom, publishDescriptionAtom, publishTagsInputAtom,
   publishMultiFileZipAtom,
 } from '../state/atoms';
-import { publishResource, publishAvatar, publishAvatarFromQDN, selectPublishSource, getNamesByAddress, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
-import { SERVICE_TYPES } from '../types';
+import { publishResource, publishAvatar, publishAvatarFromQDN, selectPublishSource, getNamesByAddress, fetchServiceTypes, AVATAR_GIF_MAX_BYTES, ensureAccountUnlocked } from '../api/qortal';
+import { DEFAULT_SERVICE_TYPES, buildServiceTypes, type ServiceTypeDef } from '../types';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -233,6 +233,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [service, setService] = useAtom(publishServiceAtom);
   const [selectedName, setSelectedName] = useState<string>('');
   const [ownedNames, setOwnedNames] = useState<string[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeDef[]>(DEFAULT_SERVICE_TYPES);
   const [source, setSource] = useAtom(publishSourceAtom);
   const [identifier, setIdentifier] = useAtom(publishIdentifierAtom);
   const [title, setTitle] = useAtom(publishTitleAtom);
@@ -243,6 +244,15 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const appliedUrlPrefill = useRef(false);
+
+  // Pulls the live service list from core so a service type added there shows
+  // up here automatically; falls back to the bundled snapshot on failure
+  // (e.g. an older node without this endpoint).
+  useEffect(() => {
+    fetchServiceTypes()
+      .then(list => { if (list.length) setServiceTypes(buildServiceTypes(list)); })
+      .catch(() => {});
+  }, []);
 
   // Lets other apps deep-link straight into a pre-filled publish draft, e.g.
   // Apps linking in with ?publish=1&publishService=APP to start a new app
@@ -257,7 +267,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
     const desc = searchParams.get('publishDescription');
     const tags = searchParams.get('publishTags');
     const zip  = searchParams.get('publishZip');
-    if (svc && SERVICE_TYPES.some(s => s.value === svc)) setService(svc);
+    if (svc && serviceTypes.some(s => s.value === svc)) setService(svc);
     if (id)   setIdentifier(clampIdentifierBytes(id));
     if (t)    setTitle(t.slice(0, 80));
     if (desc) setDescription(desc.slice(0, 240));
@@ -324,7 +334,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account?.address]);
 
-  const selectedService = SERVICE_TYPES.find(s => s.value === service);
+  const selectedService = serviceTypes.find(s => s.value === service);
 
   async function handlePickFile() {
     try {
@@ -470,7 +480,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
             },
           }}
         >
-          {SERVICE_TYPES.map(s => (
+          {serviceTypes.map(s => (
             <MenuItem key={s.value} value={s.value} sx={{ fontSize: '0.8rem' }}>
               {s.label}
               {s.maxSize && (
