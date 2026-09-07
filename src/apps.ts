@@ -3,6 +3,7 @@ export const APPS = {
   chain:   { qdn: 'Chain',   label: 'Chain'   },
   curate:  { qdn: 'Curate',  label: 'Curate'  },
   gallery: { qdn: 'Gallery', label: 'Gallery' },
+  games:   { qdn: 'Games',   label: 'Games'   },
   groups:  { qdn: 'Groups',  label: 'Groups'  },
   library: { qdn: 'Library', label: 'Library' },
   names:   { qdn: 'Names',   label: 'Names'   },
