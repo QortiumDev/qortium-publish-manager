@@ -288,7 +288,7 @@ export function PublishDialog({ open, onClose }: { open: boolean; onClose: () =>
           .forEach(k => next.delete(k));
         return next;
       }
-      if (service !== 'ARBITRARY_DATA') next.set('publishService', service); else next.delete('publishService');
+      if (service !== 'DOCUMENT') next.set('publishService', service); else next.delete('publishService');
       if (identifier) next.set('publishIdentifier', identifier); else next.delete('publishIdentifier');
       if (title) next.set('publishTitle', title); else next.delete('publishTitle');
       if (description) next.set('publishDescription', description); else next.delete('publishDescription');

@@ -37,7 +37,11 @@ export const qdnListsLoadedAtom  = atom<boolean>(false);
 // Publish dialog draft - lives outside the component so a half-filled form
 // survives closing the dialog or navigating between pages (in-memory only,
 // cleared on app reload since File objects cannot be persisted)
-export const publishServiceAtom      = atom<string>('ARBITRARY_DATA');
+// DOCUMENT, not ARBITRARY_DATA: qortium-home's PUBLIC_QDN_SERVICES whitelist
+// (electron/qdn-public-services.ts) doesn't include ARBITRARY_DATA, so
+// publishing under it throws through the real bridge - DOCUMENT is the
+// closest "generic, no size limit" type Home actually accepts.
+export const publishServiceAtom      = atom<string>('DOCUMENT');
 export const publishSourceAtom       = atom<PublishSource | null>(null);
 export const publishIdentifierAtom   = atom<string>('');
 export const publishTitleAtom        = atom<string>('');
